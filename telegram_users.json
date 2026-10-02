@@ -1,0 +1,16 @@
+{
+  "ownerId": "2051992452",
+  "defaultLimit": 10,
+  "users": {
+    "2051992452": {
+      "id": "2051992452",
+      "username": "BotOwner",
+      "role": "owner",
+      "limit": -1,
+      "used": 0,
+      "authorizedAt": "2026-10-03T00:39:27.000Z"
+    }
+  },
+  "pendingRequests": {},
+  "updatedAt": "2026-10-02T19:13:12.956Z"
+}

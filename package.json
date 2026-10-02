@@ -1,0 +1,23 @@
+{
+  "name": "api-number-chat-hub",
+  "version": "1.0.0",
+  "description": "College Project: Interactive API Query Hub with 10-Digit Number Input and Chatbox Response",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "api-tester",
+    "college-project",
+    "chatbox",
+    "cors-proxy",
+    "rest-api"
+  ],
+  "author": "College Student Project",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

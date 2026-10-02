@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APIChat - Interactive 10-Digit Query Hub</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+
+  <!-- APP CONTAINER -->
+  <div class="app-layout">
+    
+    <!-- TOP NAVIGATION BAR -->
+    <header class="app-header">
+      <div class="header-left">
+        <button id="toggleSidebarBtn" class="icon-btn mobile-only" aria-label="Toggle Configuration Panel">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+        <div class="brand">
+          <div class="brand-logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <div class="brand-text">
+            <h1>APIChat <span class="badge-project">College Project</span></h1>
+            <p class="tagline">Custom API & 10-Digit Query Response Hub</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="status-indicator" title="Backend Server Status">
+          <span class="status-dot"></span>
+          <span class="status-text" id="serverStatusText">Proxy Online</span>
+        </div>
+
+        <button id="telegramModalBtn" class="btn btn-secondary btn-sm" title="Configure and Connect Telegram Bot">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <span id="telegramBtnText">Telegram Bot</span>
+          <span id="telegramStatusDot" class="status-dot-mini offline"></span>
+        </button>
+
+        <button id="soundToggleBtn" class="icon-btn" title="Toggle Sound Feedback">
+          <svg id="soundOnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          <svg id="soundOffIcon" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+        </button>
+
+        <button id="themeToggleBtn" class="icon-btn" title="Toggle Dark/Light Mode">
+          <svg id="sunIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg id="moonIcon" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+
+        <button id="projectDocsBtn" class="btn btn-secondary btn-sm" title="View Project Architecture & Viva Q&A">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <span>Project Docs</span>
+        </button>
+
+        <!-- User Profile & Authentication Dropdown -->
+        <div class="user-profile-menu" id="userProfileMenu">
+          <button type="button" id="userMenuBtn" class="btn btn-secondary btn-sm user-badge-btn" title="Admin Account Settings">
+            <span class="user-avatar-mini">👤</span>
+            <span id="currentUsernameText">admin</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div id="userDropdown" class="user-dropdown-menu hidden">
+            <div class="dropdown-header">
+              <span class="dropdown-role">Site Administrator</span>
+              <strong id="dropdownUsername">admin</strong>
+            </div>
+            <button type="button" id="openChangePassBtn" class="dropdown-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>Change Password</span>
+            </button>
+            <button type="button" id="logoutBtn" class="dropdown-item dropdown-logout">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN WORKSPACE -->
+    <div class="workspace-body">
+      
+      <!-- LEFT CONFIGURATION SIDEBAR -->
+      <aside class="config-sidebar" id="configSidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            <h2>API Configuration</h2>
+          </div>
+          <div class="sidebar-header-actions">
+            <button type="button" id="lockApiBtn" class="btn btn-lock" title="Lock or Unlock this API configuration">
+              <svg id="lockIconLocked" class="hidden" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <svg id="lockIconUnlocked" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+              <span id="lockBtnText">Lock API</span>
+            </button>
+            <button id="closeSidebarBtn" class="icon-btn mobile-only" aria-label="Close sidebar">✕</button>
+          </div>
+        </div>
+
+        <div class="sidebar-content">
+          <!-- Locked Status Alert Banner -->
+          <div id="lockedBanner" class="locked-banner hidden">
+            <div class="locked-banner-left">
+              <span class="locked-pulse-icon">🔒</span>
+              <div class="locked-banner-text">
+                <strong>API Configuration Locked</strong>
+                <small>Endpoints, headers & presets are protected</small>
+              </div>
+            </div>
+            <button type="button" id="unlockQuickBtn" class="btn btn-unlock-sm">Unlock</button>
+          </div>
+
+          <!-- Preset selector -->
+          <div class="form-group">
+            <label for="apiPresetSelect" class="form-label">
+              <span>Choose Template / Preset</span>
+              <span class="label-hint">Quick Load</span>
+            </label>
+            <div class="select-wrapper">
+              <select id="apiPresetSelect" class="form-select">
+                <option value="custom">⚙️ Custom API (Enter Your Own)</option>
+                <option value="mock-telecom" selected>📱 Telecom & Carrier Lookup (Built-in Demo)</option>
+                <option value="mock-student">🎓 University Student Registry (Built-in Demo)</option>
+                <option value="mock-sms">💬 SMS / OTP Gateway Status (Built-in Demo)</option>
+                <option value="jsonplaceholder">🌐 Public JSONPlaceholder Users API</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Target API URL -->
+          <div class="form-group">
+            <label for="apiUrlInput" class="form-label">
+              <span>API Endpoint URL <strong class="req">*</strong></span>
+            </label>
+            <div class="input-with-icon">
+              <input 
+                type="url" 
+                id="apiUrlInput" 
+                class="form-input" 
+                placeholder="https://api.example.com/v1/search"
+                value="/api/mock/telecom-lookup"
+                required
+              >
+            </div>
+            <div class="field-help">Use <code>{number}</code> in the path or specify a query parameter below.</div>
+          </div>
+
+          <!-- Query Parameter and Method row -->
+          <div class="form-row">
+            <div class="form-group col-7">
+              <label for="queryParamInput" class="form-label">Query Param Name</label>
+              <input 
+                type="text" 
+                id="queryParamInput" 
+                class="form-input" 
+                placeholder="e.g. number, phone, q"
+                value="number"
+              >
+            </div>
+            <div class="form-group col-5">
+              <label for="httpMethodSelect" class="form-label">HTTP Method</label>
+              <select id="httpMethodSelect" class="form-select">
+                <option value="GET" selected>GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Advanced Collapsible Section -->
+          <details class="advanced-settings-accordion">
+            <summary class="accordion-header">
+              <span>Advanced Options (Headers & Proxy)</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <div class="accordion-body">
+              
+              <!-- Proxy toggle -->
+              <div class="form-group toggle-group">
+                <div class="toggle-info">
+                  <label class="toggle-label" for="proxyToggle">Bypass CORS via Backend Proxy</label>
+                  <span class="toggle-desc">Recommended: prevents browser cross-origin blocks</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="proxyToggle" checked>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+
+              <!-- Auth Header Input -->
+              <div class="form-group">
+                <label for="authHeaderInput" class="form-label">Authorization / API Key Header</label>
+                <input 
+                  type="text" 
+                  id="authHeaderInput" 
+                  class="form-input" 
+                  placeholder="Bearer your_token_here or ApiKey"
+                >
+              </div>
+
+              <!-- Custom JSON Headers -->
+              <div class="form-group">
+                <label for="customHeadersInput" class="form-label">Additional Headers (JSON format)</label>
+                <textarea 
+                  id="customHeadersInput" 
+                  class="form-textarea" 
+                  rows="2" 
+                  placeholder='{"X-Custom-Header": "Value"}'
+                ></textarea>
+              </div>
+
+              <!-- POST Body Type (only shown when POST) -->
+              <div class="form-group" id="postBodyGroup" style="display: none;">
+                <label for="postBodyTypeSelect" class="form-label">POST Payload Format</label>
+                <select id="postBodyTypeSelect" class="form-select">
+                  <option value="json" selected>JSON: {"number": "..."}</option>
+                  <option value="form">x-www-form-urlencoded</option>
+                </select>
+              </div>
+
+            </div>
+          </details>
+
+          <!-- Quick Test Numbers -->
+          <div class="quick-samples-card">
+            <div class="samples-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              <span>Click to test sample 10-digit numbers:</span>
+            </div>
+            <div class="chip-container">
+              <button type="button" class="sample-chip" data-num="9876543210">9876543210</button>
+              <button type="button" class="sample-chip" data-num="9123456789">9123456789</button>
+              <button type="button" class="sample-chip" data-num="8800112233">8800112233</button>
+              <button type="button" class="sample-chip" data-num="7009876543">7009876543</button>
+            </div>
+          </div>
+
+          <!-- Current Request Preview -->
+          <div class="request-preview-card">
+            <div class="preview-label">Constructed Request Preview:</div>
+            <code id="requestUrlPreview">GET /api/mock/telecom-lookup?number=9876543210</code>
+          </div>
+
+        </div>
+      </aside>
+
+      <!-- MAIN CHATBOX AREA -->
+      <main class="chat-container">
+        
+        <!-- Chat Area Top Sub-Header -->
+        <div class="chat-header-bar">
+          <div class="chat-active-info">
+            <span class="pulse-indicator"></span>
+            <span class="active-endpoint-label" id="currentEndpointBadge">Active Endpoint: Telecom Lookup API</span>
+          </div>
+          <div class="chat-header-actions">
+            <span class="query-count-badge" id="queryCountBadge">0 queries</span>
+            <button id="exportChatBtn" class="btn btn-ghost btn-sm" title="Export Chat History as JSON">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Export</span>
+            </button>
+            <button id="clearChatBtn" class="btn btn-ghost btn-sm" title="Clear Chat History">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Stream Messages List -->
+        <div class="chat-messages" id="chatMessages">
+          
+          <!-- Empty State Hero (hidden once queries start) -->
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon-ring">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <h2>Ready to Query Any API</h2>
+            <p>Type your 10-digit number below and click Send. The application will dispatch the request to your configured API endpoint and display the formatted output here in real-time.</p>
+            
+            <div class="feature-steps">
+              <div class="step-card">
+                <span class="step-num">1</span>
+                <strong>Set Endpoint</strong>
+                <span>Use custom or built-in mock APIs</span>
+              </div>
+              <div class="step-card">
+                <span class="step-num">2</span>
+                <strong>Enter 10 Digits</strong>
+                <span>Type or click any quick sample</span>
+              </div>
+              <div class="step-card">
+                <span class="step-num">3</span>
+                <strong>View in Chatbox</strong>
+                <span>Interactive cards, JSON & Audio</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- BOTTOM STICKY INPUT BAR -->
+        <div class="chat-input-wrapper">
+          <form id="queryForm" class="query-form" autocomplete="off">
+            
+            <div class="input-container">
+              <div class="input-icon-prefix">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              </div>
+
+              <input 
+                type="text" 
+                id="numberInput" 
+                class="number-input-field" 
+                placeholder="Enter 10-digit number (e.g. 9876543210)..." 
+                maxlength="10"
+                inputmode="numeric"
+                pattern="[0-9]{10}"
+                required
+              >
+
+              <div class="input-status-badge">
+                <span id="digitCounter" class="digit-counter">0/10</span>
+              </div>
+
+              <button type="submit" id="sendBtn" class="send-btn" title="Send Query (Enter)">
+                <span>Send Query</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+
+            <div class="input-footer-hint">
+              <span id="inputValidationMsg">Enter exactly 10 digits to execute query.</span>
+              <span class="shortcut-hint">Press <kbd>Enter ↵</kbd> to query</span>
+            </div>
+
+          </form>
+        </div>
+
+      </main>
+
+    </div>
+  </div>
+
+  <!-- COLLEGE PROJECT DOCUMENTATION & VIVA MODAL -->
+  <div id="docsModal" class="modal-overlay hidden">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2>🎓 College Project Documentation & Viva Guide</h2>
+          <span class="modal-subtitle">Architecture, Workflow & Evaluation Readiness</span>
+        </div>
+        <button id="closeModalBtn" class="icon-btn" aria-label="Close modal">✕</button>
+      </div>
+
+      <div class="modal-content">
+        <section class="doc-section">
+          <h3>📌 Project Abstract</h3>
+          <p>
+            <strong>APIChat</strong> is a full-stack web application developed to bridge arbitrary REST APIs with conversational interfaces. Users can specify any custom or enterprise REST endpoint and pass a 10-digit identifier (e.g., telephone number, student enrollment ID, shipment code). The backend validates the parameters, proxies the request to eliminate Cross-Origin Resource Sharing (CORS) rejections, measures roundtrip latency, and streams the structured payload into an interactive chat stream.
+          </p>
+        </section>
+
+        <section class="doc-section">
+          <h3>🏗️ System Architecture & Workflow</h3>
+          <div class="architecture-diagram">
+            <div class="arch-box">
+              <span class="arch-tag">Frontend UI</span>
+              <strong>HTML5 + CSS3 + ES6+</strong>
+              <small>10-digit validation, Chat stream, Web Audio & Speech TTS</small>
+            </div>
+            <div class="arch-arrow">➔ HTTP REST (POST /api/proxy) ➔</div>
+            <div class="arch-box">
+              <span class="arch-tag">Proxy Backend</span>
+              <strong>Node.js + Express</strong>
+              <small>CORS Bypass, Header Injection, Latency Clock & AbortController</small>
+            </div>
+            <div class="arch-arrow">➔ Remote Fetch ➔</div>
+            <div class="arch-box">
+              <span class="arch-tag">Target Server</span>
+              <strong>External or Mock API</strong>
+              <small>JSON / XML / Text response payload</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="doc-section">
+          <h3>💡 Key Features Implemented</h3>
+          <ul class="feature-checklist">
+            <li>✅ <strong>Strict 10-Digit Validation:</strong> Real-time regex verification with visual digit counter and format guidance.</li>
+            <li>✅ <strong>Custom API Endpoint Flexibility:</strong> Query parameters, path tokens (<code>{number}</code>), GET/POST methods, and custom Authorization/API Key headers.</li>
+            <li>✅ <strong>Full CORS Proxy Server:</strong> Solves the #1 issue in web APIs where browsers block requests due to origin mismatches.</li>
+            <li>✅ <strong>Conversational Chatbox UI:</strong> User messages show query parameters; Bot messages display status codes, latency, structured summary cards, and syntax-highlighted JSON.</li>
+            <li>✅ <strong>Built-in Mock Demonstrations:</strong> Telecom lookup, Student KYC registry, and SMS/OTP gateway for offline and viva evaluation.</li>
+            <li>✅ <strong>Speech Synthesis (TTS) & Export:</strong> Audio narration of API results and one-click JSON chat export.</li>
+          </ul>
+        </section>
+
+        <section class="doc-section">
+          <h3>🗣️ Likely Viva Questions & Ready Answers</h3>
+          <div class="viva-qa">
+            <div class="qa-item">
+              <strong>Q1: Why do we need a backend proxy instead of calling the API directly from the browser?</strong>
+              <p><em>Answer:</em> Web browsers enforce the Same-Origin Policy. If a third-party API does not return <code>Access-Control-Allow-Origin: *</code> headers, the browser blocks the response. Our Node.js Express proxy acts as a server-to-server gateway that bypasses browser CORS restrictions cleanly and securely.</p>
+            </div>
+            <div class="qa-item">
+              <strong>Q2: How does the application handle slow or unresponsive external APIs?</strong>
+              <p><em>Answer:</em> The server implements an <code>AbortController</code> with a 15-second timeout window. If the target server fails to reply within that threshold, the request is cleanly terminated and a 502 Gateway Timeout is rendered in the chatbox with debugging advice.</p>
+            </div>
+            <div class="qa-item">
+              <strong>Q3: How are 10-digit numbers validated?</strong>
+              <p><em>Answer:</em> Dual-layer validation is applied: on the client side using HTML5 regex patterns (<code>[0-9]{10}</code>) and JS input sanitization, and on the server side using regular expressions to guard against injection or malformed data.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal-footer">
+        <button id="modalOkBtn" class="btn btn-primary">Understood & Ready</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM BOT INTEGRATION MODAL -->
+  <div id="telegramModal" class="modal-overlay hidden">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2>🤖 Telegram Bot Integration</h2>
+          <span class="modal-subtitle">Connect your Telegram Bot to query APIs via mobile chat</span>
+        </div>
+        <button id="closeTelegramModalBtn" class="icon-btn" aria-label="Close modal">✕</button>
+      </div>
+
+      <div class="modal-content">
+        <!-- Live Connection Status Card -->
+        <div class="telegram-status-card" id="telegramStatusCard">
+          <div class="tg-status-icon-wrapper" id="tgStatusIcon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </div>
+          <div class="tg-status-info">
+            <h4 id="tgStatusTitle">Telegram Bot: Disconnected</h4>
+            <p id="tgStatusDesc">Enter your bot token below to start receiving 10-digit queries directly from Telegram users.</p>
+            <div id="tgActiveBotLink" class="hidden">
+              <a href="#" target="_blank" id="tgBotLinkTag" class="btn btn-secondary btn-sm">
+                <span>Open Bot in Telegram</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Token Form -->
+        <form id="telegramConnectForm" class="form-group" style="gap: 12px;">
+          <label for="telegramTokenInput" class="form-label">
+            <span>Telegram Bot Token <strong class="req">*</strong></span>
+            <span class="label-hint">From @BotFather</span>
+          </label>
+          <div class="input-with-icon" style="display: flex; gap: 8px;">
+            <input 
+              type="text" 
+              id="telegramTokenInput" 
+              class="form-input" 
+              placeholder="e.g. 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+              autocomplete="off"
+            >
+            <button type="submit" id="tgConnectBtn" class="btn btn-primary" style="flex-shrink: 0;">
+              Connect & Start Bot
+            </button>
+            <button type="button" id="tgDisconnectBtn" class="btn btn-secondary hidden" style="flex-shrink: 0; color: var(--danger);">
+              Stop Bot
+            </button>
+          </div>
+          <div id="tgFormError" class="field-help" style="color: var(--danger); display: none;"></div>
+        </form>
+
+        <!-- Broadcast Test Notification (when connected) -->
+        <div id="tgBroadcastSection" class="form-group hidden" style="background: var(--bg-surface); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <label class="form-label">
+            <span>Broadcast Message to Telegram Subscribers</span>
+            <span class="label-hint">Live Push</span>
+          </label>
+          <div style="display: flex; gap: 8px; margin-top: 6px;">
+            <input type="text" id="tgBroadcastInput" class="form-input" placeholder="Type an announcement to send to your Telegram bot users...">
+            <button type="button" id="tgBroadcastBtn" class="btn btn-secondary btn-sm" style="flex-shrink: 0;">Send Broadcast</button>
+          </div>
+        </div>
+
+        <!-- BOT OWNER & AUTHORIZATION CONTROL SECTION -->
+        <div class="tg-auth-management-box">
+          <div class="auth-box-header">
+            <div class="auth-box-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <h3>Bot Owner & User Authorization Limits</h3>
+            </div>
+            <span class="badge-role" id="tgOwnerBadge">👑 Owner: Not Set</span>
+          </div>
+
+          <!-- Owner Setup -->
+          <div class="auth-owner-config">
+            <div class="form-row">
+              <div class="form-group col-7">
+                <label for="tgOwnerIdInput" class="form-label">
+                  <span>Bot Owner Telegram User ID</span>
+                  <span class="label-hint">Send /myid in Telegram</span>
+                </label>
+                <input type="text" id="tgOwnerIdInput" class="form-input" placeholder="e.g. 123456789">
+              </div>
+              <div class="form-group col-5" style="justify-content: flex-end;">
+                <button type="button" id="saveOwnerBtn" class="btn btn-secondary" style="height: 38px;">Save Owner</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pending Requests Alert -->
+          <div id="tgPendingRequestsCard" class="pending-requests-card hidden">
+            <div class="pending-header">
+              <span>⏳ Pending Access Requests (<strong id="pendingCountBadge">0</strong>)</span>
+            </div>
+            <div id="pendingListContainer" class="pending-list-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Add User Form -->
+          <div class="manual-auth-bar">
+            <span class="manual-auth-title">Authorize User & Set Quota:</span>
+            <div class="manual-auth-inputs">
+              <input type="text" id="manualAuthId" class="form-input" placeholder="User ID (e.g. 987654321)">
+              <input type="number" id="manualAuthLimit" class="form-input" placeholder="Limit" value="10" title="Query limit (-1 for unlimited)" style="width: 80px;">
+              <button type="button" id="manualAuthBtn" class="btn btn-primary btn-sm">+ Authorize</button>
+            </div>
+          </div>
+
+          <!-- Authorized Users Table -->
+          <div class="auth-users-table-wrapper">
+            <div class="table-header-row">
+              <span>Authorized Users & Quota Tracking</span>
+              <button type="button" id="refreshAuthUsersBtn" class="btn-text-sm">🔄 Refresh</button>
+            </div>
+            <div id="authUsersList" class="auth-users-list">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Setup Instructions Section -->
+        <section class="doc-section">
+          <h3>⚡ How to create your bot in 1 minute:</h3>
+          <ol class="setup-steps-list">
+            <li>Open the Telegram app and search for <strong>@BotFather</strong>.</li>
+            <li>Send the message <code>/newbot</code> and follow the prompts to choose a Bot Name and Username.</li>
+            <li>BotFather will reply with your <strong>HTTP API token</strong> (e.g. <code>7123456789:AAF...</code>).</li>
+            <li>Paste that token in the box above and click <strong>Connect & Start Bot</strong>!</li>
+          </ol>
+        </section>
+
+        <!-- Telegram Commands Cheatsheet -->
+        <section class="doc-section">
+          <h3>📱 What you can send to your Telegram Bot:</h3>
+          <div class="viva-qa">
+            <div class="qa-item">
+              <strong>1. Send any 10-digit number</strong>
+              <p>Just message <code>9876543210</code> — The bot queries your active API and replies with the full parsed status, key information, and JSON payload!</p>
+            </div>
+            <div class="qa-item">
+              <strong>2. Switch API Presets</strong>
+              <p>Send <code>/preset telecom</code>, <code>/preset student</code>, or <code>/preset sms</code> to instantly switch targets from mobile.</p>
+            </div>
+            <div class="qa-item">
+              <strong>3. Set Custom API Endpoint</strong>
+              <p>Send <code>/api https://your-domain.com/v1/search</code> to direct queries anywhere.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal-footer">
+        <button id="tgModalDoneBtn" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FULL-SCREEN LOGIN OVERLAY -->
+  <div id="loginModal" class="login-overlay hidden">
+    <div class="login-card">
+      <div class="login-card-header">
+        <div class="login-brand-icon">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <h2>APIChat Hub</h2>
+        <p class="login-subtitle">College Project &bull; Authorization Gateway</p>
+      </div>
+
+      <div class="login-badge-lock">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>Authentication Required &bull; Protected Access</span>
+      </div>
+
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <label for="loginUsernameInput" class="form-label">Admin Username</label>
+          <div class="input-with-icon">
+            <svg class="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <input type="text" id="loginUsernameInput" class="form-input" placeholder="e.g. admin" required autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="loginPasswordInput" class="form-label">Password</label>
+          <div class="input-with-icon">
+            <svg class="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input type="password" id="loginPasswordInput" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+        </div>
+
+        <div id="loginErrorMsg" class="login-error hidden"></div>
+
+        <button type="submit" id="loginSubmitBtn" class="btn btn-primary btn-block">
+          <span>Sign In to Hub</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+
+        <div class="login-hint">
+          <span>Default credentials: <code>admin</code> / <code>admin123</code></span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CHANGE PASSWORD / CREDENTIALS MODAL -->
+  <div id="changePasswordModal" class="modal-overlay hidden">
+    <div class="modal-window" style="max-width: 440px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2>Admin Account Security</h2>
+          <span class="modal-subtitle">Update your website login credentials</span>
+        </div>
+        <button type="button" id="closeChangePassModalBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <form id="changePasswordForm" class="modal-content" style="padding: 20px 24px;">
+        <div class="form-group">
+          <label for="currentPasswordInput" class="form-label">Current Password</label>
+          <input type="password" id="currentPasswordInput" class="form-input" placeholder="Enter your current password" required autocomplete="current-password">
+        </div>
+
+        <div class="form-group">
+          <label for="newUsernameInput" class="form-label">New Username (Optional)</label>
+          <input type="text" id="newUsernameInput" class="form-input" placeholder="Leave empty to keep current username" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+          <label for="newPasswordInput" class="form-label">New Password</label>
+          <input type="password" id="newPasswordInput" class="form-input" placeholder="Minimum 4 characters" required autocomplete="new-password">
+        </div>
+
+        <div class="form-group">
+          <label for="confirmNewPasswordInput" class="form-label">Confirm New Password</label>
+          <input type="password" id="confirmNewPasswordInput" class="form-input" placeholder="Re-type new password" required autocomplete="new-password">
+        </div>
+
+        <div id="changePassMsg" class="login-error hidden"></div>
+
+        <div class="modal-footer" style="padding: 12px 0 0 0; display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="cancelChangePassBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="saveChangePassBtn" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="app.js"></script>
+</body>
+</html>
