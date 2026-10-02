@@ -193,9 +193,57 @@ class TelegramBotService {
     const fromUser = msg.from?.username || msg.from?.first_name || 'Telegram User';
 
     if (!chatId || !text) return;
+
+    // 🔒 1. Gatekeeper Authorization Check
+    const auth = this.authManager.checkAccess(chatId, fromUser);
+
+    if (!auth.allowed) {
+      const ownerId = this.authManager.ownerId || '2051992452';
+      const ownerMarkup = {
+        inline_keyboard: [
+          [
+            {
+              text: '💬 Contact Bot Owner',
+              url: `tg://user?id=${ownerId}`
+            }
+          ]
+        ]
+      };
+
+      if (auth.reason === 'UNAUTHORIZED') {
+        if (auth.isNewRequest && this.authManager.ownerId) {
+          // Alert Bot Owner
+          await this.sendMessage(
+            this.authManager.ownerId,
+            `🔔 *New Access Request*\n• *User:* @${fromUser}\n• *User ID:* \`${chatId}\`\n\nTo approve with 10 queries, reply:\n\`/auth ${chatId} 10\``
+          );
+        }
+        this.broadcastEvent('telegram_access_request', {
+          id: chatId,
+          username: fromUser,
+          time: new Date().toISOString()
+        });
+
+        await this.sendMessage(
+          chatId,
+          `⛔ *Access Restricted / Unauthorized*\n\nYou are not authorized to access or use this bot.\n• *Your User ID:* \`${chatId}\`\n• *Status:* 🔒 Pending Authorization\n\nPlease contact the Bot Owner to get access:\n👉 [Contact Bot Owner](tg://user?id=${ownerId}) (ID: \`${ownerId}\`)\n\n_Once authorized by the owner, you will be able to query the system._`,
+          ownerMarkup
+        );
+        return;
+      } else if (auth.reason === 'QUOTA_EXHAUSTED') {
+        await this.sendMessage(
+          chatId,
+          `⚠️ *Query Quota Exhausted*\n\nYou have used all *${auth.limit}* authorized queries.\n• *Your User ID:* \`${chatId}\`\n\nPlease contact the Bot Owner to replenish your quota:\n👉 [Contact Bot Owner](tg://user?id=${ownerId}) (ID: \`${ownerId}\`)`,
+          ownerMarkup
+        );
+        return;
+      }
+      return;
+    }
+
     this.subscribers.add(chatId);
 
-    // 1. Handle Commands
+    // 2. Handle Commands
     if (text.startsWith('/start')) {
       const welcome = 
 `👋 *Welcome to APIChat Hub Bot!*
@@ -416,37 +464,6 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
     const cleanNumber = text.replace(/\D/g, '');
 
     if (cleanNumber.length === 10) {
-      // 🔒 Authorization & Rate Limit Verification
-      const auth = this.authManager.checkAccess(chatId, fromUser);
-
-      if (!auth.allowed) {
-        if (auth.reason === 'UNAUTHORIZED') {
-          if (auth.isNewRequest && this.authManager.ownerId) {
-            // Alert Bot Owner
-            await this.sendMessage(
-              this.authManager.ownerId,
-              `🔔 *New Access Request*\n• *User:* @${fromUser}\n• *User ID:* \`${chatId}\`\n\nTo approve with 10 queries, reply:\n\`/auth ${chatId} 10\``
-            );
-          }
-          this.broadcastEvent('telegram_access_request', {
-            id: chatId,
-            username: fromUser,
-            time: new Date().toISOString()
-          });
-          await this.sendMessage(
-            chatId,
-            `⛔ *Access Restricted / Unauthorized*\n\nYou must be authorized by the Bot Owner to query this API.\n• *Your User ID:* \`${chatId}\`\n\nYour request has been logged. Please ask the Bot Owner to approve you with:\n\`/auth ${chatId} 10\``
-          );
-          return;
-        } else if (auth.reason === 'QUOTA_EXHAUSTED') {
-          await this.sendMessage(
-            chatId,
-            `⚠️ *Query Quota Exhausted*\n\nYou have used all *${auth.limit}* authorized queries.\n\nPlease contact the Bot Owner to replenish your quota using:\n\`/setlimit ${chatId} 20\``
-          );
-          return;
-        }
-      }
-
       await this.sendMessage(chatId, `⏳ *Querying secure gateway for \`${cleanNumber}\`...*`);
 
       // Execute query using our shared query engine
@@ -577,18 +594,22 @@ ${jsonString}
   }
 
   // Send message via Telegram API
-  async sendMessage(chatId, text) {
+  async sendMessage(chatId, text, replyMarkup = null) {
     if (!this.token) return;
     try {
+      const payload = {
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      };
+      if (replyMarkup) {
+        payload.reply_markup = replyMarkup;
+      }
       await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: text,
-          parse_mode: 'Markdown',
-          disable_web_page_preview: true
-        })
+        body: JSON.stringify(payload)
       });
     } catch (err) {
       console.error(`Failed to send Telegram message to ${chatId}:`, err.message);
