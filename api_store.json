@@ -1,0 +1,58 @@
+{
+  "activeApiId": "phone_lookup",
+  "apis": [
+    {
+      "id": "phone_lookup",
+      "name": "Mobile Number Lookup",
+      "description": "Telecom operator, circle, and owner verification",
+      "url": "/api/mock/telecom-lookup",
+      "paramName": "number",
+      "method": "GET",
+      "inputType": "number",
+      "placeholder": "Enter 10-digit mobile number (e.g. 9876543210)...",
+      "icon": "📱",
+      "isBuiltin": true,
+      "createdAt": "2026-10-02T21:00:29.804Z"
+    },
+    {
+      "id": "vehicle_lookup",
+      "name": "Vehicle RC & RTO Lookup",
+      "description": "Vehicle registration, owner, chassis, and fitness lookup",
+      "url": "/api/mock/vehicle-lookup",
+      "paramName": "rc",
+      "method": "GET",
+      "inputType": "vehicle",
+      "placeholder": "Enter Vehicle RC Number (e.g. DL01AB1234, MH12DE1433)...",
+      "icon": "🚗",
+      "isBuiltin": true,
+      "createdAt": "2026-10-02T21:00:29.806Z"
+    },
+    {
+      "id": "student_registry",
+      "name": "University Student Registry",
+      "description": "College enrollment, CGPA, and branch lookup",
+      "url": "/api/mock/student-registry",
+      "paramName": "number",
+      "method": "GET",
+      "inputType": "number",
+      "placeholder": "Enter 10-digit Student Enrollment / Phone ID...",
+      "icon": "🎓",
+      "isBuiltin": true,
+      "createdAt": "2026-10-02T21:00:29.806Z"
+    },
+    {
+      "id": "sms_gateway",
+      "name": "SMS / OTP Gateway Simulator",
+      "description": "High-priority SMS & OTP dispatch simulator",
+      "url": "/api/mock/sms-gateway",
+      "paramName": "number",
+      "method": "GET",
+      "inputType": "number",
+      "placeholder": "Enter 10-digit mobile number for OTP dispatch...",
+      "icon": "💬",
+      "isBuiltin": true,
+      "createdAt": "2026-10-02T21:00:29.806Z"
+    }
+  ],
+  "updatedAt": "2026-10-02T21:08:05.287Z"
+}

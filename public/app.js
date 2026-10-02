@@ -12,7 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
     soundEnabled: true,
     activePreset: 'mock-telecom',
     theme: localStorage.getItem('apichat_theme') || 'dark',
-    isLocked: false
+    isLocked: false,
+    apis: [],
+    activeApiId: 'phone_lookup'
   };
 
   // --- PRESET DEFINITIONS ---
@@ -87,6 +89,27 @@ document.addEventListener('DOMContentLoaded', () => {
     emptyState: document.getElementById('emptyState'),
     clearChatBtn: document.getElementById('clearChatBtn'),
     exportChatBtn: document.getElementById('exportChatBtn'),
+
+    // Multi-API Tabs & Editor Elements
+    apiTabsBar: document.getElementById('apiTabsBar'),
+    apiTabsContainer: document.getElementById('apiTabsContainer'),
+    addNewApiBtn: document.getElementById('addNewApiBtn'),
+    apiEditorModal: document.getElementById('apiEditorModal'),
+    closeApiModalBtn: document.getElementById('closeApiModalBtn'),
+    cancelApiModalBtn: document.getElementById('cancelApiModalBtn'),
+    apiEditorForm: document.getElementById('apiEditorForm'),
+    apiModalTitle: document.getElementById('apiModalTitle'),
+    editApiId: document.getElementById('editApiId'),
+    newApiName: document.getElementById('newApiName'),
+    newApiType: document.getElementById('newApiType'),
+    newApiMethod: document.getElementById('newApiMethod'),
+    newApiUrl: document.getElementById('newApiUrl'),
+    newApiParamName: document.getElementById('newApiParamName'),
+    newApiIcon: document.getElementById('newApiIcon'),
+    newApiPlaceholder: document.getElementById('newApiPlaceholder'),
+    newApiAuthHeader: document.getElementById('newApiAuthHeader'),
+    apiFormError: document.getElementById('apiFormError'),
+    saveApiBtn: document.getElementById('saveApiBtn'),
 
     // Form & Input Bar
     queryForm: document.getElementById('queryForm'),
@@ -410,29 +433,54 @@ document.addEventListener('DOMContentLoaded', () => {
   elements.apiUrlInput.addEventListener('input', updateRequestPreview);
   elements.queryParamInput.addEventListener('input', updateRequestPreview);
 
-  // --- 10-DIGIT NUMBER INPUT SANITIZATION & COUNTER ---
+  // --- INPUT SANITIZATION & COUNTER (Multi-API Aware) ---
   elements.numberInput.addEventListener('input', (e) => {
-    // Retain only digits 0-9
-    let val = e.target.value.replace(/\D/g, '');
-    if (val.length > 10) val = val.slice(0, 10);
-    e.target.value = val;
+    const activeApi = (state.apis && state.apis.find(a => a.id === state.activeApiId)) || { inputType: 'number' };
 
-    const len = val.length;
-    elements.digitCounter.textContent = `${len}/10`;
+    if (activeApi.inputType === 'number') {
+      let val = e.target.value.replace(/\D/g, '');
+      if (val.length > 10) val = val.slice(0, 10);
+      e.target.value = val;
 
-    if (len === 10) {
-      elements.digitCounter.className = 'digit-counter complete';
-      elements.inputValidationMsg.textContent = '✓ Ready to send 10-digit query.';
-      elements.inputValidationMsg.style.color = 'var(--success)';
-      elements.sendBtn.disabled = false;
-    } else if (len > 0) {
-      elements.digitCounter.className = 'digit-counter typing';
-      elements.inputValidationMsg.textContent = `Need ${10 - len} more digit${10 - len === 1 ? '' : 's'}. (Currently ${len} digits)`;
-      elements.inputValidationMsg.style.color = 'var(--warning)';
-      elements.sendBtn.disabled = false;
+      const len = val.length;
+      elements.digitCounter.textContent = `${len}/10`;
+
+      if (len === 10) {
+        elements.digitCounter.className = 'digit-counter complete';
+        elements.inputValidationMsg.textContent = '✓ Ready to send 10-digit query.';
+        elements.inputValidationMsg.style.color = 'var(--success)';
+        elements.sendBtn.disabled = false;
+      } else if (len > 0) {
+        elements.digitCounter.className = 'digit-counter typing';
+        elements.inputValidationMsg.textContent = `Need ${10 - len} more digit${10 - len === 1 ? '' : 's'}. (Currently ${len} digits)`;
+        elements.inputValidationMsg.style.color = 'var(--warning)';
+        elements.sendBtn.disabled = false;
+      } else {
+        elements.digitCounter.className = 'digit-counter';
+        elements.inputValidationMsg.textContent = 'Enter exactly 10 digits to execute query.';
+        elements.inputValidationMsg.style.color = 'var(--text-dim)';
+        elements.sendBtn.disabled = false;
+      }
+    } else if (activeApi.inputType === 'vehicle') {
+      let val = e.target.value.toUpperCase();
+      e.target.value = val;
+      const len = val.length;
+      elements.digitCounter.textContent = `${len} chars`;
+
+      if (len >= 6) {
+        elements.digitCounter.className = 'digit-counter complete';
+        elements.inputValidationMsg.textContent = '✓ Ready to query vehicle registration.';
+        elements.inputValidationMsg.style.color = 'var(--success)';
+        elements.sendBtn.disabled = false;
+      } else {
+        elements.digitCounter.className = 'digit-counter typing';
+        elements.inputValidationMsg.textContent = 'Enter vehicle registration number (e.g. DL01AB1234).';
+        elements.inputValidationMsg.style.color = 'var(--warning)';
+        elements.sendBtn.disabled = false;
+      }
     } else {
-      elements.digitCounter.className = 'digit-counter';
-      elements.inputValidationMsg.textContent = 'Enter exactly 10 digits to execute query.';
+      elements.digitCounter.textContent = `${e.target.value.length} chars`;
+      elements.inputValidationMsg.textContent = 'Query ready to send.';
       elements.inputValidationMsg.style.color = 'var(--text-dim)';
       elements.sendBtn.disabled = false;
     }
@@ -450,15 +498,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // --- QUERY SUBMISSION HANDLER ---
+  // --- QUERY SUBMISSION HANDLER (Multi-API) ---
   elements.queryForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const number = elements.numberInput.value.trim();
-    if (!/^\d{10}$/.test(number)) {
-      alert('Please enter a valid 10-digit number (digits 0-9 only).');
-      elements.numberInput.focus();
-      return;
+    const activeApi = (state.apis && state.apis.find(a => a.id === state.activeApiId)) || { inputType: 'number', name: 'API' };
+    const queryVal = elements.numberInput.value.trim();
+
+    if (activeApi.inputType === 'number') {
+      if (!/^\d{10}$/.test(queryVal)) {
+        alert('Please enter a valid 10-digit phone number (digits 0-9 only).');
+        elements.numberInput.focus();
+        return;
+      }
+    } else if (activeApi.inputType === 'vehicle') {
+      if (queryVal.length < 5) {
+        alert('Please enter a valid vehicle RC number (e.g. DL01AB1234).');
+        elements.numberInput.focus();
+        return;
+      }
+    } else {
+      if (!queryVal) {
+        alert('Please enter a query value.');
+        elements.numberInput.focus();
+        return;
+      }
     }
 
     const apiUrl = elements.apiUrlInput.value.trim();
@@ -468,7 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const paramName = elements.queryParamInput.value.trim() || 'number';
+    const paramName = elements.queryParamInput.value.trim() || activeApi.paramName || 'query';
     const method = elements.httpMethodSelect.value;
     const useProxy = elements.proxyToggle.checked;
     const authHeader = elements.authHeaderInput.value.trim();
@@ -494,7 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 1. Render User Message Bubble
-    appendUserMessage(number, apiUrl, method);
+    appendUserMessage(queryVal, apiUrl, method, `${activeApi.icon || '⚡'} ${activeApi.name}`);
     playTone('send');
 
     // 2. Render Typing Indicator
@@ -513,7 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({
             url: apiUrl,
             paramName,
-            number,
+            query: queryVal,
+            number: queryVal,
             method,
             headers: customHeaders,
             bodyType
@@ -524,11 +589,10 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // Direct Browser Fetch Mode
         let directUrl = apiUrl;
-        if (directUrl.includes('{number}')) {
-          directUrl = directUrl.replace('{number}', encodeURIComponent(number));
-        } else if (method === 'GET') {
+        directUrl = directUrl.replace(/\{number\}|\{rc\}|\{query\}|\{value\}/gi, encodeURIComponent(queryVal));
+        if (method === 'GET' && !directUrl.includes('=')) {
           const sep = directUrl.includes('?') ? '&' : '?';
-          directUrl = `${directUrl}${sep}${encodeURIComponent(paramName)}=${encodeURIComponent(number)}`;
+          directUrl = `${directUrl}${sep}${encodeURIComponent(paramName)}=${encodeURIComponent(queryVal)}`;
         }
 
         const directRes = await fetch(directUrl, {
@@ -559,7 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
       removeTypingIndicator(typingId);
 
       // Render Bot Response Bubble
-      appendBotMessage(result, number);
+      appendBotMessage(result, queryVal);
       playTone(result.ok ? 'receive' : 'error');
 
       // Update query count badge
@@ -569,7 +633,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Save to chat history
       state.chatHistory.push({
         timestamp: new Date().toISOString(),
-        queryNumber: number,
+        query: queryVal,
+        api: activeApi.name,
         request: { apiUrl, method, paramName },
         response: result
       });
@@ -583,8 +648,8 @@ document.addEventListener('DOMContentLoaded', () => {
         statusText: 'Client Request Error',
         latencyMs: Math.round(performance.now() - startTime),
         targetUrl: apiUrl,
-        error: err.message || 'Network request failed. If querying external sites, make sure Proxy toggle is enabled to bypass CORS!'
-      }, number);
+        error: err.message || 'Network request failed. Make sure Proxy toggle is enabled!'
+      }, queryVal);
     }
 
     scrollToBottom();
@@ -595,17 +660,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const row = document.createElement('div');
     row.className = 'message-row user-row';
 
-    const formattedNum = `${number.slice(0, 5)} ${number.slice(5)}`;
+    const is10Digit = /^\d{10}$/.test(String(number).trim());
+    const formattedNum = is10Digit ? `${number.slice(0, 5)} ${number.slice(5)}` : String(number).toUpperCase();
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const originBadgeHtml = originTag ? `<span class="telegram-origin-badge">✈ ${escapeHtml(originTag)}</span>` : '';
+    const originBadgeHtml = originTag ? `<span class="telegram-origin-badge">${escapeHtml(originTag)}</span>` : '';
 
     row.innerHTML = `
       <div class="msg-content-wrapper">
         <div class="msg-bubble user-bubble">
           ${originBadgeHtml}
           <div class="user-query-text">
-            <span># ${formattedNum}</span>
+            <span># ${escapeHtml(formattedNum)}</span>
           </div>
           <div class="user-query-meta">
             <span>Querying: <strong>${method}</strong> ${escapeHtml(url)}</span>
@@ -660,6 +726,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const isSuccess = result.ok || (result.status >= 200 && result.status < 300);
     const statusClass = isSuccess ? 'status-2xx' : (result.status >= 500 ? 'status-5xx' : 'status-4xx');
 
+    // Extract vehicle card from JSON data if applicable
+    const vehicleCardHtml = buildVehicleCard(result.data);
+
     // Extract smart cards from JSON data if applicable
     const smartCardsHtml = buildSmartCards(result.data);
 
@@ -692,6 +761,9 @@ document.addEventListener('DOMContentLoaded', () => {
               ${escapeHtml(result.targetUrl || '')}
             </span>
           </div>
+
+          <!-- Vehicle RC & RTO Card (if detected) -->
+          ${vehicleCardHtml}
 
           <!-- Highlight Key Value Cards (if detected) -->
           ${smartCardsHtml}
@@ -763,6 +835,60 @@ document.addEventListener('DOMContentLoaded', () => {
         URL.revokeObjectURL(url);
       });
     }
+  }
+
+  // --- VEHICLE REGISTRATION CARD GENERATOR ---
+  function buildVehicleCard(data) {
+    if (!data || typeof data !== 'object') return '';
+    const v = data.vehicle || (data.registrationNumber && data.ownerName ? data : null);
+    if (!v) return '';
+
+    return `
+      <div class="vehicle-info-card">
+        <div class="vehicle-card-header">
+          <div class="vehicle-plate-pill">${escapeHtml(v.registrationNumber || 'VEHICLE')}</div>
+          <div class="vehicle-title-col">
+            <div class="vehicle-card-title">${escapeHtml(v.makerModel || 'Motor Vehicle')}</div>
+            <div class="vehicle-card-sub">${escapeHtml(v.vehicleClass || 'LMV')} &bull; ${escapeHtml(v.fuelType || 'Fuel')}</div>
+          </div>
+          <span class="vehicle-status-badge ${String(v.rcStatus || '').toLowerCase().includes('active') ? 'active' : ''}">${escapeHtml(v.rcStatus || 'VERIFIED')}</span>
+        </div>
+        <div class="vehicle-prop-grid">
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Registered Owner</span>
+            <span class="v-prop-val owner">${escapeHtml(v.ownerName || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Registering Authority (RTO)</span>
+            <span class="v-prop-val">${escapeHtml(v.rtoName || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Registration Date</span>
+            <span class="v-prop-val">${escapeHtml(v.registrationDate || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Fitness Upto</span>
+            <span class="v-prop-val">${escapeHtml(v.fitnessUpto || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Insurance Validity</span>
+            <span class="v-prop-val highlight">${escapeHtml(v.insuranceUpto || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Insurance Provider</span>
+            <span class="v-prop-val">${escapeHtml(v.insuranceCompany || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">PUCC Valid Upto</span>
+            <span class="v-prop-val">${escapeHtml(v.puccUpto || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Engine & Chassis</span>
+            <span class="v-prop-val mono">${escapeHtml(v.engineNumber || '')} / ${escapeHtml(v.chassisNumber || '')}</span>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   // --- SMART KEY-VALUE CARDS GENERATOR ---
@@ -877,6 +1003,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const data = result.data;
     if (data && typeof data === 'object') {
+      if (data.vehicle?.ownerName || (data.registrationNumber && data.ownerName)) {
+        const v = data.vehicle || data;
+        return `Vehicle RC record found for ${v.registrationNumber || queryNumber}. Owner: ${v.ownerName}, Model: ${v.makerModel || 'Vehicle'}, RTO: ${v.rtoName || 'RTO'}.`;
+      }
       if (Array.isArray(data.data) && data.data.length > 0 && data.data[0]?.name) {
         const item = data.data[0];
         return `Record found for ${queryNumber}: Name ${item.name}, Father ${item.fname || 'N/A'}, Circle ${item.circle || 'N/A'}.`;
@@ -1490,6 +1620,285 @@ document.addEventListener('DOMContentLoaded', () => {
     setApiLockState(false);
   });
 
+  // ============================================================
+  // --- MULTI-API HUB MANAGEMENT (Tabs, Selection, CRUD) ---
+  // ============================================================
+
+  async function loadApiEndpoints() {
+    try {
+      const res = await authFetch('/api/endpoints');
+      if (!res.ok) return;
+      const data = await res.json();
+      const rawList = data.endpoints || (data.data && data.data.apis) || [];
+      if (data.ok && Array.isArray(rawList)) {
+        state.apis = rawList;
+        state.activeApiId = data.activeId || (data.data && data.data.activeApiId) || (rawList[0] ? rawList[0].id : null);
+        renderApiTabs();
+        
+        // Find active endpoint and apply to UI
+        const activeApi = state.apis.find(a => a.id === state.activeApiId) || state.apis[0];
+        if (activeApi) {
+          applyApiToUI(activeApi, false);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load API endpoints:', err);
+    }
+  }
+
+  function renderApiTabs() {
+    if (!elements.apiTabsContainer) return;
+    elements.apiTabsContainer.innerHTML = '';
+
+    (state.apis || []).forEach(api => {
+      const isActive = api.id === state.activeApiId;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `api-tab-btn ${isActive ? 'active' : ''}`;
+      btn.title = `${api.name} (${api.method} ${api.url})`;
+
+      const deleteBtnHtml = !api.isSystem
+        ? `<span class="tab-delete-btn" title="Delete API" data-id="${escapeAttr(api.id)}">&times;</span>`
+        : '';
+
+      btn.innerHTML = `
+        <span class="api-tab-icon">${escapeHtml(api.icon || '⚡')}</span>
+        <span class="api-tab-label">${escapeHtml(api.name)}</span>
+        ${deleteBtnHtml}
+      `;
+
+      btn.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tab-delete-btn')) return;
+        selectActiveApi(api.id);
+      });
+
+      const delBtn = btn.querySelector('.tab-delete-btn');
+      if (delBtn) {
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteCustomApi(api.id, api.name);
+        });
+      }
+
+      elements.apiTabsContainer.appendChild(btn);
+    });
+  }
+
+  function selectActiveApi(id) {
+    state.activeApiId = id;
+    renderApiTabs();
+    const activeApi = (state.apis || []).find(a => a.id === id);
+    if (activeApi) {
+      applyApiToUI(activeApi, true);
+      // Persist active selection to backend
+      authFetch(`/api/endpoints/${encodeURIComponent(id)}/activate`, {
+        method: 'POST'
+      }).catch(() => {});
+    }
+  }
+
+  function applyApiToUI(api, notify = false) {
+    if (!api) return;
+
+    elements.apiUrlInput.value = api.url || '';
+    elements.queryParamInput.value = api.paramName || (api.inputType === 'vehicle' ? 'rc' : 'number');
+    elements.httpMethodSelect.value = api.method || 'GET';
+    if (elements.authHeaderInput) {
+      elements.authHeaderInput.value = api.authHeader || '';
+    }
+    if (elements.customHeadersInput) {
+      elements.customHeadersInput.value = api.customHeaders
+        ? (typeof api.customHeaders === 'string' ? api.customHeaders : JSON.stringify(api.customHeaders, null, 2))
+        : '';
+    }
+
+    // Update endpoint badge
+    if (elements.currentEndpointBadge) {
+      elements.currentEndpointBadge.textContent = `${api.icon || '⚡'} ${api.name}`;
+    }
+
+    // Update input placeholder and counter depending on type
+    if (api.inputType === 'vehicle') {
+      elements.numberInput.placeholder = api.placeholder || 'Enter vehicle registration (e.g. DL01AB1234)...';
+      elements.numberInput.maxLength = 15;
+    } else if (api.inputType === 'number') {
+      elements.numberInput.placeholder = api.placeholder || 'Enter 10-digit number (e.g. 9876543210)...';
+      elements.numberInput.maxLength = 10;
+    } else {
+      elements.numberInput.placeholder = api.placeholder || 'Enter query value...';
+      elements.numberInput.removeAttribute('maxLength');
+    }
+
+    // Update sample chips dynamically
+    updateSampleChipsForApi(api);
+
+    // Reset input value
+    elements.numberInput.value = '';
+    elements.numberInput.dispatchEvent(new Event('input'));
+    updateRequestPreview();
+  }
+
+  function updateSampleChipsForApi(api) {
+    const chipsWrapper = document.querySelector('.sample-chips');
+    if (!chipsWrapper) return;
+
+    let sampleValues = [];
+    if (api.inputType === 'vehicle') {
+      sampleValues = [
+        { label: 'DL01AB1234 (Thar)', val: 'DL01AB1234' },
+        { label: 'MH12DE1433 (Swift)', val: 'MH12DE1433' },
+        { label: 'KA05MJ9901 (Creta)', val: 'KA05MJ9901' }
+      ];
+    } else if (api.inputType === 'number') {
+      sampleValues = [
+        { label: '9876543210 (Airtel)', val: '9876543210' },
+        { label: '9123456780 (Jio)', val: '9123456780' },
+        { label: '9998887776 (VI)', val: '9998887776' }
+      ];
+    } else {
+      sampleValues = [
+        { label: 'Sample 1', val: '1001' },
+        { label: 'Sample 2', val: 'TEST_01' }
+      ];
+    }
+
+    chipsWrapper.innerHTML = '<span class="chips-label">Quick samples:</span>';
+    sampleValues.forEach(s => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'sample-chip';
+      chip.setAttribute('data-num', s.val);
+      chip.textContent = s.label;
+      chip.addEventListener('click', () => {
+        elements.numberInput.value = s.val;
+        elements.numberInput.dispatchEvent(new Event('input'));
+        elements.numberInput.focus();
+      });
+      chipsWrapper.appendChild(chip);
+    });
+  }
+
+  async function deleteCustomApi(id, name) {
+    if (!confirm(`Are you sure you want to delete the endpoint "${name}"?`)) return;
+    try {
+      const res = await authFetch(`/api/endpoints/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await loadApiEndpoints();
+      } else {
+        alert(data.error || 'Failed to delete API endpoint.');
+      }
+    } catch (err) {
+      alert('Network error while deleting API: ' + err.message);
+    }
+  }
+
+  // --- Modal Opening & Dynamic Autofill ---
+  elements.addNewApiBtn?.addEventListener('click', () => {
+    if (elements.apiEditorForm) elements.apiEditorForm.reset();
+    if (elements.editApiId) elements.editApiId.value = '';
+    if (elements.apiModalTitle) elements.apiModalTitle.textContent = 'Add New API Endpoint';
+    if (elements.apiFormError) elements.apiFormError.classList.add('hidden');
+    if (elements.apiEditorModal) elements.apiEditorModal.classList.remove('hidden');
+  });
+
+  elements.closeApiModalBtn?.addEventListener('click', () => {
+    elements.apiEditorModal?.classList.add('hidden');
+  });
+
+  elements.cancelApiModalBtn?.addEventListener('click', () => {
+    elements.apiEditorModal?.classList.add('hidden');
+  });
+
+  elements.apiEditorModal?.addEventListener('click', (e) => {
+    if (e.target === elements.apiEditorModal) {
+      elements.apiEditorModal.classList.add('hidden');
+    }
+  });
+
+  // Autofill defaults on type change
+  elements.newApiType?.addEventListener('change', (e) => {
+    const type = e.target.value;
+    if (type === 'vehicle') {
+      if (elements.newApiIcon) elements.newApiIcon.value = '🚗';
+      if (elements.newApiParamName) elements.newApiParamName.value = 'rc';
+      if (elements.newApiPlaceholder) elements.newApiPlaceholder.value = 'e.g. DL01AB1234';
+      if (!elements.newApiUrl.value || elements.newApiUrl.value.includes('mock/phone')) {
+        elements.newApiUrl.value = 'http://localhost:3000/api/mock/vehicle-lookup?rc={rc}';
+      }
+    } else if (type === 'number') {
+      if (elements.newApiIcon) elements.newApiIcon.value = '📱';
+      if (elements.newApiParamName) elements.newApiParamName.value = 'number';
+      if (elements.newApiPlaceholder) elements.newApiPlaceholder.value = '10-digit number';
+    } else {
+      if (elements.newApiIcon) elements.newApiIcon.value = '🌐';
+      if (elements.newApiParamName) elements.newApiParamName.value = 'query';
+      if (elements.newApiPlaceholder) elements.newApiPlaceholder.value = 'Search or identifier query';
+    }
+  });
+
+  // Handle Save API Form Submission
+  elements.apiEditorForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = elements.newApiName.value.trim();
+    const inputType = elements.newApiType.value;
+    const method = elements.newApiMethod.value;
+    const url = elements.newApiUrl.value.trim();
+    const paramName = elements.newApiParamName.value.trim() || (inputType === 'vehicle' ? 'rc' : 'query');
+    const icon = elements.newApiIcon.value.trim() || (inputType === 'vehicle' ? '🚗' : '⚡');
+    const placeholder = elements.newApiPlaceholder.value.trim();
+    const authHeader = elements.newApiAuthHeader.value.trim();
+
+    if (!name || !url) {
+      elements.apiFormError.textContent = 'Please enter both a Name and URL for this API.';
+      elements.apiFormError.classList.remove('hidden');
+      return;
+    }
+
+    elements.saveApiBtn.disabled = true;
+    elements.saveApiBtn.textContent = 'Saving...';
+    elements.apiFormError.classList.add('hidden');
+
+    try {
+      const res = await authFetch('/api/endpoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          inputType,
+          method,
+          url,
+          paramName,
+          icon,
+          placeholder,
+          authHeader
+        })
+      });
+
+      const data = await res.json();
+      elements.saveApiBtn.disabled = false;
+      elements.saveApiBtn.textContent = 'Save Endpoint';
+
+      if (data.ok) {
+        elements.apiEditorModal.classList.add('hidden');
+        await loadApiEndpoints();
+        if (data.endpoint && data.endpoint.id) {
+          selectActiveApi(data.endpoint.id);
+        }
+      } else {
+        elements.apiFormError.textContent = data.error || 'Failed to save API endpoint.';
+        elements.apiFormError.classList.remove('hidden');
+      }
+    } catch (err) {
+      elements.saveApiBtn.disabled = false;
+      elements.saveApiBtn.textContent = 'Save Endpoint';
+      elements.apiFormError.textContent = 'Network error: ' + err.message;
+      elements.apiFormError.classList.remove('hidden');
+    }
+  });
+
   // --- ADMIN AUTHENTICATION UI EVENT LISTENERS ---
 
   // 1. Submit Login Form
@@ -1526,6 +1935,7 @@ document.addEventListener('DOMContentLoaded', () => {
         playTone('receive');
 
         // Initialize protected data feeds
+        loadApiEndpoints();
         fetchTelegramStatus();
         fetchTelegramUsers();
         initEventStream();
@@ -1680,6 +2090,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check login session before initializing protected data
   checkAuthSession().then((authenticated) => {
     if (authenticated) {
+      loadApiEndpoints();
       fetchTelegramStatus();
       fetchTelegramUsers();
       initEventStream();

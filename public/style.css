@@ -2049,3 +2049,171 @@ body.light-theme .login-overlay {
   background: var(--danger-bg);
 }
 
+
+/* ==========================================
+   MULTI-API TABS STRIP
+   ========================================== */
+.api-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.api-tabs-scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.api-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.api-tab-btn:hover {
+  background: var(--bg-surface-elevated);
+  color: var(--text-main);
+  border-color: var(--border-focus);
+}
+
+.api-tab-btn.active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(99, 102, 241, 0.16));
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+}
+
+.api-tab-btn .tab-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.api-tab-btn .tab-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-surface-elevated);
+  color: var(--text-dim);
+}
+
+.api-tab-btn.active .tab-badge {
+  background: var(--accent);
+  color: #fff;
+}
+
+.api-tab-btn .tab-del-btn {
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 3px;
+  cursor: pointer;
+  margin-left: 2px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.api-tab-btn .tab-del-btn:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.btn-add-api {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--accent);
+  background: rgba(59, 130, 246, 0.06);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.btn-add-api:hover {
+  background: var(--accent);
+  color: #fff;
+  border-style: solid;
+}
+
+/* Vehicle card styling in chat responses */
+.vehicle-info-card {
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  border-left: 4px solid #10b981;
+}
+
+.vehicle-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-main);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.vehicle-reg-tag {
+  font-family: var(--font-code);
+  background: #10b981;
+  color: #000;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.vehicle-props-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+}
+
+.v-prop-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.v-prop-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.v-prop-value {
+  font-size: 13px;
+  color: var(--text-main);
+  font-weight: 600;
+}

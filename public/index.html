@@ -272,6 +272,17 @@
           </div>
         </div>
 
+        <!-- API SELECTOR TAB STRIP (Multi-API Hub) -->
+        <div class="api-tabs-bar" id="apiTabsBar">
+          <div class="api-tabs-scroll" id="apiTabsContainer">
+            <!-- Dynamically populated API tabs: Phone Lookup, Vehicle RC Lookup, etc. -->
+          </div>
+          <button type="button" id="addNewApiBtn" class="btn-add-api" title="Add a New API (e.g. Vehicle Lookup)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>+ Add API</span>
+          </button>
+        </div>
+
         <!-- Chat Stream Messages List -->
         <div class="chat-messages" id="chatMessages">
           
@@ -318,9 +329,7 @@
                 id="numberInput" 
                 class="number-input-field" 
                 placeholder="Enter 10-digit number (e.g. 9876543210)..." 
-                maxlength="10"
-                inputmode="numeric"
-                pattern="[0-9]{10}"
+                autocomplete="off"
                 required
               >
 
@@ -669,6 +678,78 @@
         <div class="modal-footer" style="padding: 12px 0 0 0; display: flex; justify-content: flex-end; gap: 8px;">
           <button type="button" id="cancelChangePassBtn" class="btn btn-secondary">Cancel</button>
           <button type="submit" id="saveChangePassBtn" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  <!-- ADD / EDIT MULTI-API ENDPOINT MODAL -->
+  <div id="apiEditorModal" class="modal-overlay hidden">
+    <div class="modal-window" style="max-width: 540px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="apiModalTitle">➕ Add New API Endpoint</h2>
+          <span class="modal-subtitle">Add another API without removing existing ones</span>
+        </div>
+        <button type="button" id="closeApiModalBtn" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <form id="apiEditorForm" class="modal-content" style="padding: 20px 24px; gap: 14px;">
+        <input type="hidden" id="editApiId" value="">
+
+        <div class="form-group">
+          <label for="newApiName" class="form-label">API Name <strong class="req">*</strong></label>
+          <input type="text" id="newApiName" class="form-input" placeholder="e.g. Vehicle RC Lookup, Driving License API" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group col-7">
+            <label for="newApiType" class="form-label">Query Input Type</label>
+            <select id="newApiType" class="form-select">
+              <option value="number">📱 Phone Number (10 Digits)</option>
+              <option value="vehicle" selected>🚗 Vehicle RC Number (e.g. DL01AB1234)</option>
+              <option value="text">🔍 General Text / ID Query</option>
+            </select>
+          </div>
+          <div class="form-group col-5">
+            <label for="newApiMethod" class="form-label">Method</label>
+            <select id="newApiMethod" class="form-select">
+              <option value="GET" selected>GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newApiUrl" class="form-label">API Endpoint URL <strong class="req">*</strong></label>
+          <input type="text" id="newApiUrl" class="form-input" placeholder="e.g. /api/mock/vehicle-lookup or https://api.domain.com/search" required>
+          <div class="field-help">Supports <code>{query}</code>, <code>{rc}</code>, or <code>{number}</code> placeholders in URL.</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group col-7">
+            <label for="newApiParamName" class="form-label">Parameter Name</label>
+            <input type="text" id="newApiParamName" class="form-input" placeholder="e.g. rc, number, query" value="rc">
+          </div>
+          <div class="form-group col-5">
+            <label for="newApiIcon" class="form-label">Display Emoji</label>
+            <input type="text" id="newApiIcon" class="form-input" placeholder="🚗, 📱, 🔍, ⚡" value="🚗">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newApiPlaceholder" class="form-label">Input Box Placeholder</label>
+          <input type="text" id="newApiPlaceholder" class="form-input" placeholder="e.g. Enter Vehicle RC Number (e.g. DL01AB1234)...">
+        </div>
+
+        <div class="form-group">
+          <label for="newApiAuthHeader" class="form-label">Authorization / API Key (Optional)</label>
+          <input type="text" id="newApiAuthHeader" class="form-input" placeholder="Bearer YOUR_TOKEN or API_KEY">
+        </div>
+
+        <div id="apiFormError" class="login-error hidden"></div>
+
+        <div class="modal-footer" style="padding: 10px 0 0 0; display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="cancelApiModalBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="saveApiBtn" class="btn btn-primary">Save & Add API</button>
         </div>
       </form>
     </div>

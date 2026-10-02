@@ -30,6 +30,7 @@ try {
 
 const TelegramBotService = require('./telegramBot');
 const adminAuth = require('./adminAuth');
+const apiStore = require('./apiStore');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,6 +50,8 @@ async function executeApiQuery({
   url,
   paramName = 'number',
   number,
+  query,
+  value,
   method = 'GET',
   headers = {},
   bodyType = 'none',
@@ -58,11 +61,12 @@ async function executeApiQuery({
     throw new Error('Target API URL is required');
   }
 
-  if (!number || !/^\d{10}$/.test(number.toString().trim())) {
-    throw new Error('A valid 10-digit number is required');
+  const queryVal = (query !== undefined && query !== null && query !== '' ? query : (number !== undefined && number !== null && number !== '' ? number : value || '')).toString().trim();
+
+  if (!queryVal) {
+    throw new Error('A search value or query parameter is required');
   }
 
-  const cleanNumber = number.toString().trim();
   const startTime = Date.now();
 
   let finalUrl = url.trim();
@@ -72,39 +76,36 @@ async function executeApiQuery({
     finalUrl = `http://localhost:${PORT}${finalUrl}`;
   }
 
-  // Check if URL has a placeholder {number} or :number
-  if (finalUrl.includes('{number}')) {
-    finalUrl = finalUrl.replace(/{number}/g, encodeURIComponent(cleanNumber));
-  } else if (finalUrl.includes(':number')) {
-    finalUrl = finalUrl.replace(/:number/g, encodeURIComponent(cleanNumber));
-  }
+  // Check if URL has placeholders: {number}, {rc}, {query}, {value} or :number, :rc, :query, :value
+  finalUrl = finalUrl.replace(/\{number\}|\{rc\}|\{query\}|\{value\}/gi, encodeURIComponent(queryVal));
+  finalUrl = finalUrl.replace(/\:(number|rc|query|value)\b/gi, encodeURIComponent(queryVal));
 
   const fetchOptions = {
     method: method.toUpperCase(),
     headers: {
-      'User-Agent': 'APIChat-CollegeProject-Proxy/1.0',
+      'User-Agent': 'APIChat-MultiApi-Proxy/2.0',
       ...headers
     }
   };
 
   // Configure query parameters or request body
   if (fetchOptions.method === 'GET') {
-    if (!url.includes('{number}') && !url.includes(':number') && paramName) {
+    if (!url.includes('{number}') && !url.includes('{rc}') && !url.includes('{query}') && !url.includes('{value}') && !url.includes(':number') && !url.includes(':rc') && !url.includes(':query') && !url.includes(':value') && paramName) {
       const separator = finalUrl.includes('?') ? '&' : '?';
-      finalUrl = `${finalUrl}${separator}${encodeURIComponent(paramName)}=${encodeURIComponent(cleanNumber)}`;
+      finalUrl = `${finalUrl}${separator}${encodeURIComponent(paramName)}=${encodeURIComponent(queryVal)}`;
     }
   } else if (['POST', 'PUT', 'PATCH'].includes(fetchOptions.method)) {
     if (bodyType === 'json') {
       fetchOptions.headers['Content-Type'] = 'application/json';
       const payload = {
-        [paramName || 'number']: cleanNumber,
+        [paramName || 'query']: queryVal,
         ...(typeof customBody === 'object' && customBody !== null ? customBody : {})
       };
       fetchOptions.body = JSON.stringify(payload);
     } else if (bodyType === 'form') {
       fetchOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
       const params = new URLSearchParams();
-      params.append(paramName || 'number', cleanNumber);
+      params.append(paramName || 'query', queryVal);
       if (typeof customBody === 'object' && customBody !== null) {
         Object.entries(customBody).forEach(([k, v]) => params.append(k, String(v)));
       }
@@ -175,8 +176,8 @@ async function executeApiQuery({
   }
 }
 
-// Initialize Telegram Bot Service with our shared executor
-const telegramBot = new TelegramBotService(executeApiQuery);
+// Initialize Telegram Bot Service with our shared executor and API store
+const telegramBot = new TelegramBotService(executeApiQuery, apiStore);
 
 // Health check endpoint (Public)
 app.get('/api/health', (req, res) => {
@@ -291,6 +292,87 @@ app.post('/api/proxy', requireAuth, async (req, res) => {
       error: err.message
     });
   }
+});
+
+// ==========================================
+// MULTI-API ENDPOINT MANAGEMENT (Protected)
+// ==========================================
+
+// Get all configured APIs
+app.get('/api/endpoints', requireAuth, (req, res) => {
+  const storeData = apiStore.getAll();
+  res.json({
+    ok: true,
+    activeId: storeData.activeApiId,
+    endpoints: storeData.apis,
+    data: storeData
+  });
+});
+
+// Add a new API
+app.post('/api/endpoints', requireAuth, (req, res) => {
+  try {
+    const newApi = apiStore.addApi(req.body);
+    // If telegram bot is running and unlocked, synchronize if requested
+    if (!telegramBot.isLocked && newApi) {
+      telegramBot.broadcastEvent('api_added', newApi);
+    }
+    res.json({
+      ok: true,
+      message: `API "${newApi.name}" added successfully!`,
+      endpoint: newApi,
+      data: newApi
+    });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+// Update an existing API
+app.put('/api/endpoints/:id', requireAuth, (req, res) => {
+  try {
+    const updated = apiStore.updateApi(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ ok: false, error: 'API not found' });
+    }
+    res.json({
+      ok: true,
+      message: `API "${updated.name}" updated successfully!`,
+      data: updated
+    });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+// Delete an API
+app.delete('/api/endpoints/:id', requireAuth, (req, res) => {
+  const ok = apiStore.deleteApi(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ ok: false, error: 'API not found or cannot be deleted' });
+  }
+  res.json({
+    ok: true,
+    message: 'API removed successfully',
+    data: apiStore.getAll()
+  });
+});
+
+// Activate an API
+app.post('/api/endpoints/:id/activate', requireAuth, (req, res) => {
+  const ok = apiStore.setActive(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ ok: false, error: 'API not found' });
+  }
+  const active = apiStore.getActiveApi();
+  if (!telegramBot.isLocked && active) {
+    telegramBot.setConfig(active.url, active.paramName);
+  }
+  res.json({
+    ok: true,
+    message: `Active API switched to "${active.name}"`,
+    data: active
+  });
 });
 
 // ==========================================
@@ -612,6 +694,109 @@ app.get('/api/mock/sms-gateway', (req, res) => {
       gatewayNode: 'Asia-South1 (AWS SNS Mumbai)',
       smsSegments: 1,
       routeType: 'Transactional DLT Approved'
+    }
+  });
+});
+
+// Mock 4: Vehicle Registration & RTO Lookup API
+app.get('/api/mock/vehicle-lookup', (req, res) => {
+  const rc = (req.query.rc || req.query.number || req.query.query || req.query.id || '').toString().trim().toUpperCase().replace(/[\s-]/g, '');
+  if (!rc || rc.length < 5) {
+    return res.status(400).json({
+      status: 'error',
+      code: 400,
+      message: 'Please provide a valid Vehicle RC Number (e.g. ?rc=DL01AB1234 or ?rc=MH12DE1433)'
+    });
+  }
+
+  const stateMap = {
+    'DL': 'Delhi NCT',
+    'MH': 'Maharashtra',
+    'UP': 'Uttar Pradesh',
+    'KA': 'Karnataka',
+    'HR': 'Haryana',
+    'GJ': 'Gujarat',
+    'RJ': 'Rajasthan',
+    'PB': 'Punjab',
+    'TN': 'Tamil Nadu',
+    'WB': 'West Bengal',
+    'TS': 'Telangana',
+    'AP': 'Andhra Pradesh',
+    'KL': 'Kerala',
+    'MP': 'Madhya Pradesh',
+    'BR': 'Bihar',
+    'CH': 'Chandigarh'
+  };
+
+  const stateCode = rc.slice(0, 2);
+  const stateName = stateMap[stateCode] || 'Central Motor Vehicles Registry';
+  const rtoOffice = `RTO Division (${rc.slice(0, 4) || stateCode}), ${stateName}`;
+
+  const vehicles = [
+    { maker: 'Hyundai Motor India', model: 'Creta 1.5 SX (O) IVT', class: 'Motor Car (LMV)', fuel: 'Petrol' },
+    { maker: 'Maruti Suzuki India', model: 'Swift ZXi+ Dual Tone', class: 'Motor Car (LMV)', fuel: 'Petrol / E20' },
+    { maker: 'Tata Motors Passenger', model: 'Nexon EV Empowered Plus', class: 'Motor Car (LMV / Electric)', fuel: 'Electric (EV)' },
+    { maker: 'Mahindra & Mahindra', model: 'Scorpio-N Z8L 4x4 Diesel', class: 'Motor Car (SUV)', fuel: 'Diesel (BS-VI)' },
+    { maker: 'Toyota Kirloskar', model: 'Innova HyCross ZX (O) Hybrid', class: 'Motor Car (MUV)', fuel: 'Petrol Hybrid' },
+    { maker: 'Honda Cars India', model: 'City 1.5L i-VTEC ZX', class: 'Motor Car (Sedan)', fuel: 'Petrol' },
+    { maker: 'Royal Enfield', model: 'Classic 350 Dual-Channel ABS', class: 'Two Wheeler (MCWG)', fuel: 'Petrol' },
+    { maker: 'Bajaj Auto Ltd', model: 'Pulsar NS200 BS6', class: 'Two Wheeler (MCWG)', fuel: 'Petrol' },
+    { maker: 'Kia Motors India', model: 'Seltos 1.5 Turbo DCT GTX+', class: 'Motor Car (SUV)', fuel: 'Petrol' },
+    { maker: 'BMW India', model: '3 Series Gran Limousine 330Li', class: 'Motor Car (Luxury Sedan)', fuel: 'Petrol' }
+  ];
+
+  const owners = [
+    'Rajesh Kumar Verma', 'Vikramaditya Chauhan', 'Pooja Sanjay Sharma', 
+    'Ankit Ravindra Patel', 'Siddharth Narayan Rao', 'Meera Krishnan Nair',
+    'Harpreet Singh Dhillon', 'Amitabh Surendra Gupta', 'Kavita Rajesh Deshmukh'
+  ];
+
+  const financiers = ['HDFC Bank Ltd.', 'State Bank of India', 'ICICI Bank Ltd.', 'Axis Bank Ltd.', 'Kotak Mahindra Prime', 'Not Hypothecated (Cash Purchase)'];
+  const insurers = ['HDFC ERGO General Insurance', 'ICICI Lombard General Insurance', 'Tata AIG General Insurance', 'Bajaj Allianz General Insurance', 'United India Insurance'];
+
+  const hash = Array.from(rc).reduce((acc, char, idx) => acc + char.charCodeAt(0) * (idx + 1), 0);
+  const selectedVehicle = vehicles[hash % vehicles.length];
+  const owner = owners[hash % owners.length];
+  const financier = financiers[hash % financiers.length];
+  const insurer = insurers[hash % insurers.length];
+  const engineNo = `${selectedVehicle.maker.slice(0, 3).toUpperCase()}${100000 + (hash % 899999)}`;
+  const chassisNo = `MA${stateCode}${200000 + (hash % 799999)}`;
+  const regYear = 2018 + (hash % 6);
+
+  res.json({
+    status: 'success',
+    code: 200,
+    timestamp: new Date().toISOString(),
+    query: {
+      rcNumber: rc,
+      formatted: `${rc.slice(0, 2)} ${rc.slice(2, 4)} ${rc.slice(4, -4)} ${rc.slice(-4)}`.replace(/\s+/g, ' ').trim()
+    },
+    vehicle: {
+      rcNumber: rc,
+      ownerName: owner,
+      fatherName: `Shri ${(owners[(hash + 3) % owners.length]).split(' ')[0]} ${owner.split(' ').slice(-1)[0]}`,
+      makerModel: selectedVehicle.model,
+      makerName: selectedVehicle.maker,
+      vehicleClass: selectedVehicle.class,
+      fuelType: selectedVehicle.fuel,
+      color: ['Polar White', 'Phantom Black', 'Titanium Grey', 'Cherry Red', 'Silver Metallic'][hash % 5],
+      engineNumber: `${engineNo.slice(0, 4)}****${engineNo.slice(-3)}`,
+      chassisNumber: `${chassisNo.slice(0, 4)}****${chassisNo.slice(-4)}`,
+      registrationDate: `12-Jul-${regYear}`,
+      registeringAuthority: rtoOffice,
+      state: stateName,
+      fitnessUpto: `11-Jul-${regYear + 15}`,
+      roadTaxStatus: 'Life Time Tax Paid (Verified)',
+      insuranceStatus: 'Active & Insured',
+      insuranceCompany: insurer,
+      insurancePolicyNo: `POL${hash}99182`,
+      insuranceUpto: `24-Aug-2027`,
+      puccValidUpto: `19-Dec-2026`,
+      emissionNorms: 'Bharat Stage VI (BS6 OBD-II)',
+      hypothecationStatus: financier.includes('Not') ? 'None' : `Hypothecated to ${financier}`,
+      permitType: selectedVehicle.class.includes('Two') ? 'Private Motorcycle' : 'Private Passenger Car (LMV)',
+      blacklistStatus: 'Clean / No Active Enforcement Violations',
+      totalChallans: 0
     }
   });
 });

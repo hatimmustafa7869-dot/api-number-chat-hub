@@ -7,8 +7,9 @@
 const authManager = require('./telegramAuth');
 
 class TelegramBotService {
-  constructor(queryExecutor) {
-    this.queryExecutor = queryExecutor; // Function to execute the 10-digit API query
+  constructor(queryExecutor, apiStore = null) {
+    this.queryExecutor = queryExecutor; // Function to execute API queries
+    this.apiStore = apiStore; // Multi-API store
     this.authManager = authManager;
     this.token = null;
     this.botInfo = null;
@@ -226,14 +227,14 @@ class TelegramBotService {
 
         await this.sendMessage(
           chatId,
-          `⛔ *Access Restricted / Unauthorized*\n\nYou are not authorized to access or use this bot.\n• *Your User ID:* \`${chatId}\`\n• *Status:* 🔒 Pending Authorization\n\nPlease contact the Bot Owner to get access:\n👉 [Contact Bot Owner](tg://user?id=${ownerId}) (ID: \`${ownerId}\`)\n\n_Once authorized by the owner, you will be able to query the system._`,
+          `⛔ *Access Restricted / Unauthorized*\n\nYou are not authorized to access or use this bot.\n• *Your User ID:* \`${chatId}\`\n• *Status:* 🔒 Pending Authorization\n\nPlease contact the Bot Owner to get access:\n👉 [Contact Bot Owner](tg://user?id=${ownerId})\n\n_Once authorized by the owner, you will be able to query the system._`,
           ownerMarkup
         );
         return;
       } else if (auth.reason === 'QUOTA_EXHAUSTED') {
         await this.sendMessage(
           chatId,
-          `⚠️ *Query Quota Exhausted*\n\nYou have used all *${auth.limit}* authorized queries.\n• *Your User ID:* \`${chatId}\`\n\nPlease contact the Bot Owner to replenish your quota:\n👉 [Contact Bot Owner](tg://user?id=${ownerId}) (ID: \`${ownerId}\`)`,
+          `⚠️ *Query Quota Exhausted*\n\nYou have used all *${auth.limit}* authorized queries.\n• *Your User ID:* \`${chatId}\`\n\nPlease contact the Bot Owner to replenish your quota:\n👉 [Contact Bot Owner](tg://user?id=${ownerId})`,
           ownerMarkup
         );
         return;
@@ -247,16 +248,21 @@ class TelegramBotService {
     if (text.startsWith('/start')) {
       const welcome = 
 `👋 *Welcome to APIChat Hub Bot!*
-_10-Digit Query & Information System_
+_Multi-API Query & Verification System_
 
-📱 *How to use:*
-Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secure gateway and send you the result formatted right here!
+📱 *Phone Number Lookup:*
+Send any *10-digit number* (e.g. \`9876543210\`)
 
-⚙️ *Gateway Status:* 🟢 Protected & Online
+🚗 *Vehicle RC & RTO Lookup:*
+Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)
+
+⚙️ *Gateway Status:* 🟢 Multi-API Hub Online
 
 🛠️ *Available Commands:*
-• Send \`9876543210\` -> Instant Query
-• \`/myid\` -> Check your user ID and remaining quota
+• Send \`9876543210\` -> Phone Number Query
+• Send \`DL01AB1234\` -> Vehicle RC Query
+• \`/apis\` -> List all configured active APIs
+• \`/myid\` -> Check your user profile & quota
 • \`/status\` -> Check bot and service status
 • \`/help\` -> Show help instructions`;
 
@@ -264,15 +270,34 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
       return;
     }
 
+    if (text.startsWith('/apis')) {
+      const allApis = this.apiStore ? this.apiStore.getAll().apis : [];
+      let apiLines = '';
+      if (allApis.length > 0) {
+        apiLines = allApis.map(a => `${a.icon || '🌐'} *${a.name}*\n• Type: \`${a.inputType}\` | Param: \`${a.paramName}\``).join('\n\n');
+      } else {
+        apiLines = '📱 *Mobile Number Lookup*\n🚗 *Vehicle RC & RTO Lookup*';
+      }
+      await this.sendMessage(
+        chatId,
+        `🗂️ *Configured APIs Hub (${allApis.length || 2} Available):*\n\n${apiLines}\n\n💡 _You can query phone numbers and vehicle numbers simultaneously!_`
+      );
+      return;
+    }
+
     if (text.startsWith('/help')) {
       const helpMsg = 
 `📖 *APIChat Telegram Bot Help*
 
-• Send any 10-digit number directly to query:
-  Example: \`9876543210\`
-• Check Your ID & Quota:
+• *Phone Number Lookup:*
+  Send any 10-digit number: \`9876543210\`
+• *Vehicle RC Lookup:*
+  Send vehicle number: \`DL01AB1234\` or \`/vehicle DL01AB1234\`
+• *List All APIs:*
+  \`/apis\`
+• *Check Profile & Quota:*
   \`/myid\`
-• Check Bot Status:
+• *Check Bot Status:*
   \`/status\``;
 
       await this.sendMessage(chatId, helpMsg);
@@ -366,7 +391,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
 
     if (text.startsWith('/claimowner')) {
       if (this.authManager.ownerId) {
-        await this.sendMessage(chatId, `⚠️ Bot already has a designated Owner (ID: \`${this.authManager.ownerId}\`).`);
+        await this.sendMessage(chatId, `⚠️ Bot already has a designated Owner.`);
         return;
       }
       this.authManager.setOwner(chatId, fromUser);
@@ -460,18 +485,67 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
       return;
     }
 
-    // 2. Check if the message is a 10-digit number
-    const cleanNumber = text.replace(/\D/g, '');
+    // 2. Check if message is a Vehicle Lookup
+    let vehicleNum = null;
+    if (text.startsWith('/vehicle') || text.startsWith('/rc')) {
+      vehicleNum = text.replace(/^\/(vehicle|rc)\s*/i, '').trim().toUpperCase().replace(/[\s-]/g, '');
+    } else if (!cleanNumber || cleanNumber.length !== 10) {
+      const stripped = text.trim().toUpperCase().replace(/[\s-]/g, '');
+      if (/^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{4}$/i.test(stripped)) {
+        vehicleNum = stripped;
+      }
+    }
 
+    if (vehicleNum) {
+      await this.sendMessage(chatId, `⏳ *Querying Vehicle RTO Registry for \`${vehicleNum}\`...*`);
+      const startTime = Date.now();
+      try {
+        const vehicleApi = this.apiStore ? this.apiStore.getById('vehicle_lookup') : null;
+        const targetUrl = vehicleApi ? vehicleApi.url : '/api/mock/vehicle-lookup';
+        const paramName = vehicleApi ? vehicleApi.paramName : 'rc';
+
+        const result = await this.queryExecutor({
+          url: targetUrl,
+          paramName,
+          query: vehicleNum,
+          method: 'GET'
+        });
+
+        const latencyMs = result.latencyMs || (Date.now() - startTime);
+        this.stats.telegramQueriesCount++;
+        const quota = this.authManager.consumeQuota(chatId);
+
+        this.broadcastEvent('telegram_query', {
+          user: fromUser,
+          number: vehicleNum,
+          type: 'vehicle',
+          targetUrl: result.targetUrl || targetUrl,
+          result
+        });
+
+        const formattedMsg = this.formatTelegramResponse(vehicleNum, result, latencyMs, quota, auth.isOwner);
+        await this.sendMessage(chatId, formattedMsg);
+      } catch (err) {
+        const safeError = (err.message || 'Service unavailable').replace(/https?:\/\/[^\s]+/gi, '[Secure Gateway]');
+        await this.sendMessage(chatId, `❌ *Vehicle Query Failed*\nError: ${safeError}\nPlease verify the RC number.`);
+      }
+      return;
+    }
+
+    // 3. Check if the message is a 10-digit number
     if (cleanNumber.length === 10) {
       await this.sendMessage(chatId, `⏳ *Querying secure gateway for \`${cleanNumber}\`...*`);
 
       // Execute query using our shared query engine
       const startTime = Date.now();
       try {
+        const phoneApi = this.apiStore ? (this.apiStore.getById('phone_lookup') || this.apiStore.getActiveApi()) : null;
+        const targetUrl = phoneApi ? phoneApi.url : this.activeApiUrl;
+        const paramName = phoneApi ? phoneApi.paramName : this.activeParamName;
+
         const result = await this.queryExecutor({
-          url: this.activeApiUrl,
-          paramName: this.activeParamName,
+          url: targetUrl,
+          paramName,
           number: cleanNumber,
           method: 'GET'
         });
@@ -486,7 +560,8 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
         this.broadcastEvent('telegram_query', {
           user: fromUser,
           number: cleanNumber,
-          targetUrl: result.targetUrl || this.activeApiUrl,
+          type: 'phone',
+          targetUrl: result.targetUrl || targetUrl,
           result
         });
 
@@ -501,16 +576,17 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
       return;
     }
 
-    // If text is not 10 digits and not a command
+    // If text is not 10 digits and not a vehicle and not a command
     await this.sendMessage(
       chatId,
-      `⚠️ *Please enter a valid 10-digit number!*\n\nReceived: \`${text}\` (${cleanNumber.length} digits).\nExample: \`9876543210\``
+      `⚠️ *Unrecognized Input Format*\n\n• For *Phone Lookup*, send any *10-digit number* (e.g. \`9876543210\`)\n• For *Vehicle RC Lookup*, send registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)\n• Type \`/apis\` to see all active APIs`
     );
   }
 
   // Format response for Telegram Markdown
   formatTelegramResponse(number, result, latencyMs, quota = null, isOwner = false) {
-    const formattedNum = `${number.slice(0, 5)} ${number.slice(5)}`;
+    const is10Digit = /^\d{10}$/.test(String(number).trim());
+    const displayQuery = is10Digit ? `+91 ${number.slice(0, 5)} ${number.slice(5)}` : String(number).toUpperCase();
     const statusIcon = result.ok ? '🟢' : '🔴';
     const statusText = `${statusIcon} *HTTP ${result.status}* (${latencyMs}ms)`;
 
@@ -524,8 +600,25 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
     const data = result.data;
 
     if (data && typeof data === 'object') {
+      // Check for Vehicle / RC Record
+      if (data.vehicle || (data.data && data.data.vehicleClass)) {
+        const v = data.vehicle || data.data;
+        highlights = 
+`🚗 *Vehicle RC & RTO Details:*
+• *RC Number:* ${v.rcNumber || number}
+• *Owner Name:* ${v.ownerName || 'Verified Citizen'}
+• *Vehicle Model:* ${v.makerModel || 'N/A'}
+• *Vehicle Class:* ${v.vehicleClass || 'Motor Car (LMV)'}
+• *Fuel Type:* ${v.fuelType || 'Petrol'}
+• *RTO Office:* ${v.registeringAuthority || 'RTO Office'}
+• *Reg Date:* ${v.registrationDate || 'N/A'}
+• *Fitness Upto:* ${v.fitnessUpto || 'Valid'}
+• *Insurance:* ${v.insuranceStatus || 'Active'}
+• *PUCC Upto:* ${v.puccValidUpto || 'Valid'}
+• *Status:* ${v.blacklistStatus || 'Clean Record'}`;
+      }
       // Check for Array of records (e.g. OSINT / Contact info)
-      if (Array.isArray(data.data) && data.data.length > 0 && data.data[0].name) {
+      else if (Array.isArray(data.data) && data.data.length > 0 && data.data[0].name) {
         const item = data.data[0];
         const cleanAddress = (item.address || 'N/A').replace(/!+/g, ', ');
         highlights = 
@@ -565,7 +658,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
 `💬 *SMS Delivery Report:*
 • *Status:* ${data.details.deliveryStatus}
 • *Generated OTP:* \`${data.details.generatedOtp}\`
-• *Recipient:* +91 ${number}
+• *Recipient:* ${displayQuery}
 • *Gateway:* ${data.details.gatewayNode}`;
       }
     }
@@ -582,7 +675,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secu
 
     return (
 `🔍 *APIChat Query Output*
-📱 *Query:* \`+91 ${formattedNum}\`
+📌 *Target:* \`${displayQuery}\`
 ⚡ *Status:* ${statusText}
 🔒 *Gateway:* Protected Cloud Proxy
 ${quotaInfo ? quotaInfo + '\n' : ''}
