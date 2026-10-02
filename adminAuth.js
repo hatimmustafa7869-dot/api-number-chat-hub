@@ -17,18 +17,20 @@ class AdminAuthService {
     this.load();
   }
 
-  // Load credentials from disk
+  // Load credentials from disk or environment variables
   load() {
     try {
       if (fs.existsSync(AUTH_FILE)) {
         const data = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
-        this.username = data.username || 'admin';
-        this.password = data.password || 'admin123';
+        this.username = process.env.ADMIN_USERNAME || data.username || 'admin';
+        this.password = process.env.ADMIN_PASSWORD || data.password || 'admin123';
         return;
       }
     } catch (err) {
       console.error('Error loading admin_auth.json:', err.message);
     }
+    this.username = process.env.ADMIN_USERNAME || 'admin';
+    this.password = process.env.ADMIN_PASSWORD || 'admin123';
     this.save();
   }
 

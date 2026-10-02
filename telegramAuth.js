@@ -17,13 +17,13 @@ class TelegramAuthManager {
     this.load();
   }
 
-  // Load from disk
+  // Load from disk or environment variables
   load() {
     try {
       if (fs.existsSync(STORAGE_FILE)) {
         const raw = fs.readFileSync(STORAGE_FILE, 'utf8');
         const data = JSON.parse(raw);
-        this.ownerId = data.ownerId || '2051992452';
+        this.ownerId = process.env.TELEGRAM_OWNER_ID || data.ownerId || '2051992452';
         this.defaultLimit = typeof data.defaultLimit === 'number' ? data.defaultLimit : 10;
         this.users = data.users || {};
         this.pendingRequests = data.pendingRequests || {};

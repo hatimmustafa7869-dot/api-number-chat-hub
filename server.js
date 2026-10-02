@@ -1,6 +1,33 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+
+// Built-in .env parser (Loads .env variables without external packages)
+try {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const match = trimmed.match(/^([\w.-]+)\s*=\s*(.*)?$/);
+      if (match) {
+        let key = match[1];
+        let value = match[2] ? match[2].trim() : '';
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (process.env[key] === undefined) {
+          process.env[key] = value;
+        }
+      }
+    });
+  }
+} catch (e) {
+  console.warn('Notice: Could not load .env file:', e.message);
+}
+
 const TelegramBotService = require('./telegramBot');
 const adminAuth = require('./adminAuth');
 
@@ -605,6 +632,28 @@ const server = app.listen(PORT, () => {
   console.log(`   - Student:  http://localhost:${PORT}/api/mock/student-registry?number=9876543210`);
   console.log(`   - SMS/OTP:  http://localhost:${PORT}/api/mock/sms-gateway?number=9876543210`);
   console.log(`=======================================================`);
+
+  // Auto-start Telegram Bot if token is provided via environment variables
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    const defaultApi = process.env.DEFAULT_API_URL || 'https://rootx-osint.in/?type=num&key=sachin&query={number}';
+    const defaultParam = process.env.DEFAULT_PARAM_NAME || 'number';
+    
+    telegramBot.start(process.env.TELEGRAM_BOT_TOKEN.trim(), defaultApi, defaultParam).then((res) => {
+      console.log(`🤖 Telegram Bot @${res.botInfo.username} automatically connected via ENV!`);
+      const shouldLock = process.env.LOCK_API === 'true' || process.env.LOCK_API === '1';
+      if (shouldLock) {
+        telegramBot.setLock(true, defaultApi, defaultParam);
+        console.log(`🔒 API Configuration automatically locked to: ${defaultApi}`);
+      }
+    }).catch((err) => {
+      console.error('⚠️ Could not auto-start Telegram bot from TELEGRAM_BOT_TOKEN:', err.message);
+    });
+  } else if (process.env.LOCK_API === 'true' || process.env.LOCK_API === '1') {
+    const defaultApi = process.env.DEFAULT_API_URL || 'https://rootx-osint.in/?type=num&key=sachin&query={number}';
+    const defaultParam = process.env.DEFAULT_PARAM_NAME || 'number';
+    telegramBot.setLock(true, defaultApi, defaultParam);
+    console.log(`🔒 API Configuration automatically locked to: ${defaultApi}`);
+  }
 });
 
 // Clean shutdown
