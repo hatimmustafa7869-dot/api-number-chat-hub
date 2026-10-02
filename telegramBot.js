@@ -199,22 +199,18 @@ class TelegramBotService {
     if (text.startsWith('/start')) {
       const welcome = 
 `👋 *Welcome to APIChat Hub Bot!*
-_College Project: 10-Digit API Query & Response System_
+_10-Digit Query & Information System_
 
 📱 *How to use:*
-Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the active API and send you the result formatted right here!
+Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the secure gateway and send you the result formatted right here!
 
-⚙️ *Current Target API:*
-\`${this.activeApiUrl}\`
+⚙️ *Gateway Status:* 🟢 Protected & Online
 
 🛠️ *Available Commands:*
-• Send \`9876543210\` -> Instant API query
-• \`/preset telecom\` -> Switch to Telecom Lookup
-• \`/preset student\` -> Switch to Student KYC Registry
-• \`/preset sms\` -> Switch to SMS Gateway Simulator
-• \`/api <url>\` -> Set custom API URL
-• \`/status\` -> Check bot and endpoint status
-• \`/help\` -> Show this help menu`;
+• Send \`9876543210\` -> Instant Query
+• \`/myid\` -> Check your user ID and remaining quota
+• \`/status\` -> Check bot and service status
+• \`/help\` -> Show help instructions`;
 
       await this.sendMessage(chatId, welcome);
       return;
@@ -226,13 +222,10 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
 
 • Send any 10-digit number directly to query:
   Example: \`9876543210\`
-• Change API Endpoint:
-  \`/api https://api.example.com/search\`
-• Load Built-in Presets:
-  \`/preset telecom\` (Telecom details)
-  \`/preset student\` (Academic profile)
-  \`/preset sms\` (SMS/OTP Delivery)
-• Check Status: \`/status\``;
+• Check Your ID & Quota:
+  \`/myid\`
+• Check Bot Status:
+  \`/status\``;
 
       await this.sendMessage(chatId, helpMsg);
       return;
@@ -243,8 +236,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
 `📊 *APIChat Bot Status:*
 • Status: 🟢 Online & Listening
 • Username: @${this.botInfo.username}
-• Active API: \`${this.activeApiUrl}\`
-• Query Param: \`${this.activeParamName}\`
+• Gateway: 🔒 Secure Cloud Proxy (Encrypted)
 • Total Telegram Queries: ${this.stats.telegramQueriesCount}`;
 
       await this.sendMessage(chatId, statusMsg);
@@ -252,10 +244,15 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
     }
 
     if (text.startsWith('/preset')) {
+      if (!this.authManager.isOwner(chatId)) {
+        await this.sendMessage(chatId, `⛔ *Permission Denied*\nOnly the Bot Owner can switch presets.`);
+        return;
+      }
+
       if (this.isLocked) {
         await this.sendMessage(
           chatId,
-          `🔒 *API Configuration is Locked*\nThe administrator has locked this bot to:\n\`${this.activeApiUrl}\`\n\nPreset modifications are disabled while locked.`
+          `🔒 *API Configuration is Locked*\nThe administrator has locked this bot. Preset modifications are disabled.`
         );
         return;
       }
@@ -266,15 +263,15 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
       if (presetKey === 'telecom') {
         this.activeApiUrl = '/api/mock/telecom-lookup';
         this.activeParamName = 'number';
-        await this.sendMessage(chatId, `✅ Active API switched to *Telecom & Carrier Lookup Demo*.\nSend any 10-digit number to test!`);
+        await this.sendMessage(chatId, `✅ Switched to *Telecom & Carrier Lookup Demo*.\nSend any 10-digit number to test!`);
       } else if (presetKey === 'student') {
         this.activeApiUrl = '/api/mock/student-registry';
         this.activeParamName = 'number';
-        await this.sendMessage(chatId, `✅ Active API switched to *University Student Registry Demo*.\nSend any 10-digit enrollment number to test!`);
+        await this.sendMessage(chatId, `✅ Switched to *University Student Registry Demo*.\nSend any 10-digit enrollment number to test!`);
       } else if (presetKey === 'sms') {
         this.activeApiUrl = '/api/mock/sms-gateway';
         this.activeParamName = 'number';
-        await this.sendMessage(chatId, `✅ Active API switched to *SMS & OTP Gateway Simulator*.\nSend any 10-digit mobile number to test!`);
+        await this.sendMessage(chatId, `✅ Switched to *SMS & OTP Gateway Simulator*.\nSend any 10-digit mobile number to test!`);
       } else {
         await this.sendMessage(chatId, `⚠️ Unknown preset. Available: \`/preset telecom\`, \`/preset student\`, \`/preset sms\``);
       }
@@ -282,10 +279,15 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
     }
 
     if (text.startsWith('/api')) {
+      if (!this.authManager.isOwner(chatId)) {
+        await this.sendMessage(chatId, `⛔ *Permission Denied*\nOnly the Bot Owner can configure the target API.`);
+        return;
+      }
+
       if (this.isLocked) {
         await this.sendMessage(
           chatId,
-          `🔒 *API Configuration is Locked*\nThe administrator has locked this bot to:\n\`${this.activeApiUrl}\`\n\nCustom endpoint changes are disabled while locked.`
+          `🔒 *API Configuration is Locked*\nThe administrator has locked this bot. Custom endpoint changes are disabled.`
         );
         return;
       }
@@ -296,7 +298,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
         return;
       }
       this.activeApiUrl = newUrl;
-      await this.sendMessage(chatId, `✅ Target API URL updated to:\n\`${newUrl}\`\n\nNow send any 10-digit number to query!`);
+      await this.sendMessage(chatId, `✅ Target API URL updated successfully.\nNow send any 10-digit number to query!`);
       return;
     }
 
@@ -445,7 +447,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
         }
       }
 
-      await this.sendMessage(chatId, `⏳ *Querying API for \`${cleanNumber}\`...*\n_Endpoint: ${this.activeApiUrl}_`);
+      await this.sendMessage(chatId, `⏳ *Querying secure gateway for \`${cleanNumber}\`...*`);
 
       // Execute query using our shared query engine
       const startTime = Date.now();
@@ -476,7 +478,8 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
         await this.sendMessage(chatId, formattedMsg);
 
       } catch (err) {
-        await this.sendMessage(chatId, `❌ *API Query Failed*\nError: ${err.message}\nCheck if the target API endpoint is online.`);
+        const safeError = (err.message || 'Service unavailable').replace(/https?:\/\/[^\s]+/gi, '[Secure Gateway]');
+        await this.sendMessage(chatId, `❌ *Query Failed*\nError: ${safeError}\nPlease verify the number and try again.`);
       }
       return;
     }
@@ -564,7 +567,7 @@ Just send any *10-digit number* (e.g. \`9876543210\`), and I will query the acti
 `🔍 *APIChat Query Output*
 📱 *Query:* \`+91 ${formattedNum}\`
 ⚡ *Status:* ${statusText}
-🌐 *Endpoint:* \`${result.targetUrl || this.activeApiUrl}\`
+🔒 *Gateway:* Protected Cloud Proxy
 ${quotaInfo ? quotaInfo + '\n' : ''}
 ${highlights ? highlights + '\n\n' : ''}📦 *Raw JSON Payload:*
 \`\`\`json
