@@ -173,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pendingListContainer: document.getElementById('pendingListContainer'),
     manualAuthId: document.getElementById('manualAuthId'),
     manualAuthLimit: document.getElementById('manualAuthLimit'),
+    manualAuthUnlimitedBtn: document.getElementById('manualAuthUnlimitedBtn'),
     manualAuthBtn: document.getElementById('manualAuthBtn'),
     refreshAuthUsersBtn: document.getElementById('refreshAuthUsersBtn'),
     authUsersList: document.getElementById('authUsersList'),
@@ -1472,11 +1473,20 @@ document.addEventListener('DOMContentLoaded', () => {
             <code>${escapeHtml(p.id)}</code>
           </div>
           <div class="pending-actions">
+            <button type="button" class="btn btn-secondary btn-sm approve-unlimited-btn" data-id="${p.id}" data-name="${escapeAttr(p.username)}" title="Authorize with Unlimited Queries">♾️ Unlimited</button>
             <button type="button" class="btn btn-primary btn-sm approve-user-btn" data-id="${p.id}" data-name="${escapeAttr(p.username)}">Approve (10)</button>
             <button type="button" class="btn btn-secondary btn-sm reject-user-btn" data-id="${p.id}">Reject</button>
           </div>
         </div>
       `).join('');
+
+      elements.pendingListContainer.querySelectorAll('.approve-unlimited-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const name = btn.getAttribute('data-name');
+          await authorizeUser(id, name, -1);
+        });
+      });
 
       elements.pendingListContainer.querySelectorAll('.approve-user-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -1503,8 +1513,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       elements.authUsersList.innerHTML = users.map(u => {
         const isOwner = u.role === 'owner' || String(u.id) === String(authData.ownerId);
-        const rem = u.limit === -1 ? '∞ Unlimited' : `${Math.max(0, u.limit - (u.used || 0))}/${u.limit} remaining`;
-        const pillClass = isOwner ? 'quota-pill unlimited' : (u.limit !== -1 && (u.used || 0) >= u.limit ? 'quota-pill exhausted' : 'quota-pill');
+        const rem = u.limit === -1 ? '♾️ Unlimited' : `${Math.max(0, u.limit - (u.used || 0))}/${u.limit} remaining`;
+        const pillClass = isOwner ? 'quota-pill unlimited' : (u.limit === -1 ? 'quota-pill unlimited' : ((u.used || 0) >= u.limit ? 'quota-pill exhausted' : 'quota-pill'));
 
         return `
           <div class="auth-user-card">
@@ -1518,6 +1528,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="pending-actions">
               ${!isOwner ? `
+                <button type="button" class="btn btn-ghost btn-sm set-unlimited-btn" data-id="${u.id}" title="Grant Unlimited queries">♾️</button>
                 <button type="button" class="btn btn-ghost btn-sm add-quota-btn" data-id="${u.id}" data-current="${u.limit}" title="Add 5 queries">+5</button>
                 <button type="button" class="btn btn-ghost btn-sm set-limit-btn" data-id="${u.id}" data-current="${u.limit}" title="Set custom limit">Set</button>
                 <button type="button" class="btn btn-ghost btn-sm revoke-user-btn" data-id="${u.id}" style="color: var(--danger);" title="Revoke access">✕</button>
@@ -1528,6 +1539,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join('');
 
       // Wire action buttons
+      elements.authUsersList.querySelectorAll('.set-unlimited-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          await setUserLimit(id, -1);
+        });
+      });
+
       elements.authUsersList.querySelectorAll('.add-quota-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           const id = btn.getAttribute('data-id');
@@ -1540,9 +1558,11 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', async () => {
           const id = btn.getAttribute('data-id');
           const current = btn.getAttribute('data-current');
-          const val = prompt(`Set query limit for User ${id} (-1 for unlimited):`, current);
+          const val = prompt(`Set query limit for User ${id} (-1 or 'unlimited' for unlimited):`, current);
           if (val !== null && val.trim() !== '') {
-            await setUserLimit(id, parseInt(val, 10));
+            const trimmed = val.trim().toLowerCase();
+            const newLim = (trimmed === 'unlimited' || trimmed === '-1') ? -1 : parseInt(trimmed, 10);
+            await setUserLimit(id, newLim);
           }
         });
       });
@@ -1647,6 +1667,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     await authorizeUser(id, 'User', limit);
+    elements.manualAuthId.value = '';
+  });
+
+  // Manual Auth Unlimited button listener
+  elements.manualAuthUnlimitedBtn?.addEventListener('click', async () => {
+    const id = elements.manualAuthId.value.trim();
+    if (!id) {
+      alert('Please enter a Telegram User ID to grant unlimited queries.');
+      return;
+    }
+    await authorizeUser(id, 'User', -1);
     elements.manualAuthId.value = '';
   });
 

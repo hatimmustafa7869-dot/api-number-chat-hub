@@ -36,39 +36,35 @@ class TelegramAuthManager {
     }
   }
 
-  // Load from disk or environment variables
+  // Load synchronously from multi-tier database and backup layers
   load() {
     try {
-      if (fs.existsSync(STORAGE_FILE)) {
-        const raw = fs.readFileSync(STORAGE_FILE, 'utf8');
-        const data = JSON.parse(raw);
-        this.ownerId = process.env.TELEGRAM_OWNER_ID || data.ownerId || '2051992452';
-        this.defaultLimit = typeof data.defaultLimit === 'number' ? data.defaultLimit : 10;
-        this.users = data.users || {};
-        this.pendingRequests = data.pendingRequests || {};
-
-        // Ensure owner entry exists with unlimited quota
-        if (!this.users[this.ownerId]) {
-          this.users[this.ownerId] = {
-            id: String(this.ownerId),
-            username: 'BotOwner',
-            role: 'owner',
-            limit: -1,
-            used: 0,
-            authorizedAt: new Date().toISOString()
-          };
-        }
-        return;
+      const syncData = db.loadTelegramDataSync();
+      if (syncData && syncData.users) {
+        this.ownerId = process.env.TELEGRAM_OWNER_ID || syncData.ownerId || '2051992452';
+        this.defaultLimit = typeof syncData.defaultLimit === 'number' ? syncData.defaultLimit : 10;
+        this.users = syncData.users || {};
+        this.pendingRequests = syncData.pendingRequests || {};
       }
     } catch (err) {
-      console.error('Error loading telegram_users.json:', err.message);
+      console.error('Error loading sync from db:', err.message);
     }
-    // Initialize default owner if not exists
-    this.setOwner(this.ownerId, 'BotOwner');
+
+    // Ensure owner entry exists with unlimited quota
+    if (!this.users[this.ownerId]) {
+      this.users[this.ownerId] = {
+        id: String(this.ownerId),
+        username: 'BotOwner',
+        role: 'owner',
+        limit: -1,
+        used: 0,
+        authorizedAt: new Date().toISOString()
+      };
+    }
   }
 
   // Save to disk and database engine
-  save() {
+  save(deletedUserId = null) {
     const data = {
       ownerId: this.ownerId,
       defaultLimit: this.defaultLimit,
@@ -78,7 +74,7 @@ class TelegramAuthManager {
     };
 
     // Save to multi-tier database engine (survives git pulls and redeploys)
-    db.saveTelegramData(data).catch(() => {});
+    db.saveTelegramData(data, deletedUserId).catch(() => {});
   }
 
   // Check if someone is the owner
@@ -200,14 +196,20 @@ class TelegramAuthManager {
     return null;
   }
 
-  // Authorize a user with a specific query limit
+  // Authorize a user with a specific query limit (supports 'unlimited' or -1)
   authorizeUser(userId, username = '', limit = null) {
     const idStr = String(userId).trim();
     if (!idStr) return null;
 
-    const parsedLimit = limit === null || limit === undefined || limit === '' 
-      ? this.defaultLimit 
-      : parseInt(limit, 10);
+    let parsedLimit;
+    const strLimit = String(limit || '').toLowerCase().trim();
+    if (strLimit === 'unlimited' || strLimit === 'inf' || strLimit === 'infinite' || strLimit === '-1' || limit === -1) {
+      parsedLimit = -1;
+    } else if (limit === null || limit === undefined || limit === '') {
+      parsedLimit = this.defaultLimit;
+    } else {
+      parsedLimit = parseInt(limit, 10);
+    }
 
     const existingUsed = this.users[idStr]?.used || 0;
 
@@ -239,22 +241,34 @@ class TelegramAuthManager {
 
     if (this.users[idStr]) {
       delete this.users[idStr];
-      this.save();
+      this.save(idStr);
       return true;
     }
     return false;
   }
 
-  // Set new limit for an existing user
+  // Set new limit for an existing user (supports 'unlimited' or -1)
   setLimit(userId, newLimit) {
     const idStr = String(userId).trim();
     const user = this.users[idStr];
     if (!user) return null;
 
-    const parsed = parseInt(newLimit, 10);
+    let parsed;
+    const strLimit = String(newLimit || '').toLowerCase().trim();
+    if (strLimit === 'unlimited' || strLimit === 'inf' || strLimit === 'infinite' || strLimit === '-1' || newLimit === -1) {
+      parsed = -1;
+    } else {
+      parsed = parseInt(newLimit, 10);
+    }
+
     user.limit = isNaN(parsed) ? this.defaultLimit : parsed;
     this.save();
     return user;
+  }
+
+  // Convenience helper to set unlimited queries directly
+  setUnlimited(userId) {
+    return this.setLimit(userId, -1);
   }
 
   // Reject a pending request
@@ -262,7 +276,7 @@ class TelegramAuthManager {
     const idStr = String(userId).trim();
     if (this.pendingRequests[idStr]) {
       delete this.pendingRequests[idStr];
-      this.save();
+      this.save(idStr);
       return true;
     }
     return false;

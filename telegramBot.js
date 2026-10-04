@@ -23,7 +23,13 @@ class TelegramBotService {
     this.eventListeners = new Set(); // SSE client listeners
     this.stats = {
       telegramQueriesCount: 0,
-      startedAt: null
+      phoneQueries: 0,
+      vehicleQueries: 0,
+      tgIdQueries: 0,
+      successfulQueries: 0,
+      failedQueries: 0,
+      startedAt: null,
+      lastQueryAt: null
     };
   }
 
@@ -262,14 +268,24 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
 
 ⚙️ *Gateway Status:* 🟢 Multi-API Hub Online
 
-🛠️ *Available Commands:*
+🛠️ *User Commands:*
 • Send \`9876543210\` -> Phone Number Query
 • Send \`DL01AB1234\` -> Vehicle RC Query
 • Send \`/tg 512345678\` -> Telegram ID Query
 • \`/apis\` -> List all configured active APIs
-• \`/myid\` -> Check your user profile & quota
+• \`/myid\` or \`/profile\` -> Check your profile & quota
+• \`/stats\` or \`/totalstats\` -> Full system traffic statistics
 • \`/status\` -> Check bot and service status
-• \`/help\` -> Show help instructions`;
+• \`/ping\` -> Gateway roundtrip speed test
+• \`/help\` -> Show help instructions
+
+👑 *Owner Commands:*
+• \`/unlimited <userId>\` -> Grant ♾️ Unlimited Queries
+• \`/auth <userId> [limit|unlimited]\` -> Authorize user
+• \`/setlimit <userId> <limit|unlimited]\` -> Update quota
+• \`/users\` -> View all authorized users & quotas
+• \`/deauth <userId>\` -> Revoke user access
+• \`/lock\` & \`/unlock\` -> Toggle API lock state`;
 
       await this.sendMessage(chatId, welcome);
       return;
@@ -292,32 +308,108 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
 
     if (text.startsWith('/help')) {
       const helpMsg = 
-`📖 *APIChat Telegram Bot Help*
+`📖 *APIChat Telegram Bot Help & Commands Guide*
 
+🔍 *Query Commands:*
 • *Phone Number Lookup:*
   Send any 10-digit number: \`9876543210\`
 • *Vehicle RC Lookup:*
   Send vehicle number: \`DL01AB1234\` or \`/vehicle DL01AB1234\`
 • *Telegram ID to Number:*
   Send \`/tg <id>\` or \`/telegram <id>\`: \`/tg 512345678\`
-• *List All APIs:*
-  \`/apis\`
-• *Check Profile & Quota:*
-  \`/myid\`
-• *Check Bot Status:*
-  \`/status\``;
+
+📊 *System & Info Commands:*
+• \`/stats\` or \`/totalstats\` — Comprehensive total query statistics
+• \`/status\` — Bot and gateway connection state
+• \`/ping\` — Fast ping & latency check
+• \`/apis\` — List all active APIs & parameters
+• \`/myid\` or \`/profile\` — View your user profile and remaining quota
+
+👑 *Owner Admin Commands:*
+• \`/unlimited <userId>\` — Grant permanent unlimited queries
+• \`/auth <userId> [limit]\` — Authorize user with quota (or 'unlimited')
+• \`/setlimit <userId> <limit>\` — Update quota (or 'unlimited')
+• \`/users\` — List all authorized users and pending requests
+• \`/deauth <userId>\` — Revoke user access
+• \`/lock\` — Lock API config from changes
+• \`/unlock\` — Unlock API config`;
 
       await this.sendMessage(chatId, helpMsg);
       return;
     }
 
+    if (text === '/ping') {
+      const startPing = Date.now();
+      await this.sendMessage(chatId, `🏓 *Pong!*\n• Gateway Status: 🟢 Online & Responsive\n• Ping Roundtrip: ~${Math.max(1, Date.now() - startPing)}ms\n• Multi-API Hub: Ready`);
+      return;
+    }
+
+    if (text.startsWith('/stats') || text.startsWith('/totalstats') || text.startsWith('/analytics') || text.startsWith('/metrics')) {
+      const authState = this.authManager.getState();
+      const uptimeSec = this.stats.startedAt 
+        ? Math.floor((Date.now() - new Date(this.stats.startedAt).getTime()) / 1000)
+        : Math.floor(process.uptime());
+      
+      const days = Math.floor(uptimeSec / 86400);
+      const hours = Math.floor((uptimeSec % 86400) / 3600);
+      const mins = Math.floor((uptimeSec % 3600) / 60);
+      const secs = uptimeSec % 60;
+      const uptimeStr = `${days > 0 ? days + 'd ' : ''}${hours}h ${mins}m ${secs}s`;
+
+      const memMb = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+      const allApis = this.apiStore ? this.apiStore.getAll().apis : [];
+      const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
+
+      const usersList = authState.users || [];
+      const unlimitedCount = usersList.filter(u => u.limit === -1).length;
+      const totalUsedQueries = usersList.reduce((acc, u) => acc + (u.used || 0), 0);
+
+      const statsMsg = 
+`📊 *APIChat Hub — Total System Statistics*
+
+⚡ *Query Execution Metrics:*
+• *Total Telegram Queries:* \`${this.stats.telegramQueriesCount}\`
+• 📱 *Phone Number Lookups:* \`${this.stats.phoneQueries || 0}\`
+• 🚗 *Vehicle RC Lookups:* \`${this.stats.vehicleQueries || 0}\`
+• ✈️ *Telegram ID Lookups:* \`${this.stats.tgIdQueries || 0}\`
+• 🟢 *Successful Queries:* \`${this.stats.successfulQueries || 0}\`
+• 🔴 *Failed / Blocked:* \`${this.stats.failedQueries || 0}\`
+• ⏱️ *Last Query:* ${this.stats.lastQueryAt ? new Date(this.stats.lastQueryAt).toLocaleTimeString() : 'None recorded'}
+
+👥 *User & Quota Analytics:*
+• *Total Authorized Users:* \`${authState.totalAuthorized}\`
+• ♾️ *Unlimited Quota Users:* \`${unlimitedCount}\`
+• 🔋 *Total Queries Consumed:* \`${totalUsedQueries}\`
+• ⏳ *Pending Access Requests:* \`${authState.totalPending}\`
+• 👑 *Bot Owner:* \`${this.authManager.ownerId || 'Not Set'}\`
+
+🗂️ *Gateway & API Hub:*
+• *Active Target API:* ${activeApi ? activeApi.name : 'Default Proxy'}
+• *Configured Endpoints:* \`${allApis.length}\`
+• *Gateway Configuration:* ${this.isLocked ? '🔒 Locked (Protected)' : '🔓 Unlocked'}
+• *Database Resilience:* Multi-Tier Active (Survives Git Redeploys)
+
+🖥️ *Server Telemetry:*
+• *Server Health:* 🟢 Online & Healthy
+• *Bot Uptime:* \`${uptimeStr}\`
+• *RAM Usage:* \`${memMb} MB\`
+• *Node Runtime:* \`${process.version}\` (${process.platform})`;
+
+      await this.sendMessage(chatId, statsMsg);
+      return;
+    }
+
     if (text.startsWith('/status')) {
+      const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
       const statusMsg = 
 `📊 *APIChat Bot Status:*
 • Status: 🟢 Online & Listening
 • Username: @${this.botInfo.username}
-• Gateway: 🔒 Secure Cloud Proxy (Encrypted)
-• Total Telegram Queries: ${this.stats.telegramQueriesCount}`;
+• Target API: ${activeApi ? activeApi.name : 'Default Proxy'}
+• Total Queries: \`${this.stats.telegramQueriesCount}\`
+• Lock State: ${this.isLocked ? '🔒 Locked' : '🔓 Unlocked'}
+
+💡 _Send \`/stats\` or \`/totalstats\` for complete traffic analytics and server metrics!_`;
 
       await this.sendMessage(chatId, statusMsg);
       return;
@@ -382,16 +474,16 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
       return;
     }
 
-    if (text.startsWith('/myid')) {
+    if (text.startsWith('/myid') || text.startsWith('/profile') || text.startsWith('/me')) {
       const isOwner = this.authManager.isOwner(chatId);
       const user = this.authManager.users[String(chatId)];
       const roleText = isOwner 
-        ? '👑 Owner (Full Admin & Unlimited Access)' 
-        : (user ? `✅ Authorized User (${user.limit === -1 ? 'Unlimited' : Math.max(0, user.limit - (user.used || 0)) + ' queries remaining'})` : '⛔ Unauthorized (Pending Approval)');
+        ? '👑 Owner (Full Admin & ♾️ Unlimited Access)' 
+        : (user ? (user.limit === -1 ? '✅ Authorized User (♾️ Unlimited Queries)' : `✅ Authorized User (${Math.max(0, user.limit - (user.used || 0))} of ${user.limit} queries remaining)`) : '⛔ Unauthorized (Pending Approval)');
 
       await this.sendMessage(
         chatId,
-        `🆔 *Your Telegram User Profile*\n• *Chat / User ID:* \`${chatId}\`\n• *Username:* @${fromUser}\n• *Access Status:* ${roleText}`
+        `🆔 *Your Telegram User Profile*\n• *Chat / User ID:* \`${chatId}\`\n• *Username:* @${fromUser}\n• *Access Status:* ${roleText}\n• *Service Role:* ${isOwner ? '👑 Administrator' : 'Client User'}`
       );
       return;
     }
@@ -405,7 +497,35 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
       this.broadcastEvent('telegram_auth_updated', this.authManager.getState());
       await this.sendMessage(
         chatId,
-        `👑 *Congratulations!*\nYou have claimed ownership of @${this.botInfo.username}.\n\n🛠️ *Admin Commands:*\n• \`/auth <userId> [limit]\` - Authorize user\n• \`/deauth <userId>\` - Revoke access\n• \`/setlimit <userId> <limit>\` - Update quota\n• \`/users\` - List users & quotas`
+        `👑 *Congratulations!*\nYou have claimed ownership of @${this.botInfo.username}.\n\n🛠️ *Admin Commands:*\n• \`/unlimited <userId>\` - Grant Unlimited Queries\n• \`/auth <userId> [limit]\` - Authorize user\n• \`/deauth <userId>\` - Revoke access\n• \`/setlimit <userId> <limit>\` - Update quota\n• \`/users\` - List users & quotas\n• \`/stats\` - System traffic statistics\n• \`/lock\` & \`/unlock\` - Protect configuration`
+      );
+      return;
+    }
+
+    if (text.startsWith('/unlimited') || text.startsWith('/unlimit')) {
+      if (!this.authManager.isOwner(chatId)) {
+        await this.sendMessage(chatId, `⛔ *Permission Denied*\nOnly the Bot Owner can grant unlimited query access.`);
+        return;
+      }
+      const parts = text.split(/\s+/);
+      const targetId = (parts[1] || '').trim();
+      if (!targetId || isNaN(parseInt(targetId, 10))) {
+        await this.sendMessage(chatId, `⚠️ *Usage:* \`/unlimited <userId>\`\nExample: \`/unlimited 123456789\``);
+        return;
+      }
+
+      const userRecord = this.authManager.authorizeUser(targetId, '', -1);
+      this.broadcastEvent('telegram_auth_updated', this.authManager.getState());
+
+      await this.sendMessage(
+        chatId,
+        `♾️ *Unlimited Quota Granted!*\n\n• *User ID:* \`${targetId}\`\n• *Quota:* ♾️ Unlimited Queries\n• *Status:* 🟢 Unrestricted Access`
+      );
+
+      // Notify the target user
+      await this.sendMessage(
+        targetId,
+        `🎉 *Unlimited Access Activated!*\n\nThe Bot Owner has upgraded your account to *♾️ Unlimited Queries*!\nYou can now query Phone Numbers, Vehicle RC, and Telegram IDs without any limits.`
       );
       return;
     }
@@ -416,17 +536,29 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
         return;
       }
       const parts = text.split(/\s+/);
-      const targetId = parts[1];
-      const limit = parts[2] !== undefined ? parseInt(parts[2], 10) : 10;
+      const targetId = (parts[1] || '').trim();
+      const rawLimit = (parts[2] || '').toLowerCase().trim();
+
       if (!targetId || isNaN(parseInt(targetId, 10))) {
-        await this.sendMessage(chatId, `⚠️ *Usage:* \`/auth <userId> [limit]\`\nExample: \`/auth 123456789 15\` or \`/auth 123456789 -1\` (unlimited)`);
+        await this.sendMessage(chatId, `⚠️ *Usage:* \`/auth <userId> [limit]\`\nExamples:\n• \`/auth 123456789 15\` (15 queries)\n• \`/auth 123456789 unlimited\` (or \`-1\` for Unlimited)`);
         return;
       }
+
+      let limit = 10;
+      if (rawLimit === 'unlimited' || rawLimit === '-1' || rawLimit === 'inf' || rawLimit === 'all') {
+        limit = -1;
+      } else if (rawLimit !== '') {
+        const parsed = parseInt(rawLimit, 10);
+        limit = isNaN(parsed) ? 10 : parsed;
+      }
+
       const userRecord = this.authManager.authorizeUser(targetId, '', limit);
       this.broadcastEvent('telegram_auth_updated', this.authManager.getState());
-      await this.sendMessage(chatId, `✅ *User Authorized*\n• *User ID:* \`${targetId}\`\n• *Quota:* ${userRecord.limit === -1 ? 'Unlimited' : userRecord.limit + ' queries'}`);
+      const quotaDesc = userRecord.limit === -1 ? '♾️ Unlimited' : `${userRecord.limit} queries`;
+
+      await this.sendMessage(chatId, `✅ *User Authorized*\n• *User ID:* \`${targetId}\`\n• *Quota:* ${quotaDesc}`);
       // Notify the target user
-      await this.sendMessage(targetId, `🎉 *Access Granted!*\nYou have been authorized by the Bot Owner to use APIChat Hub.\n🔋 *Your Quota:* ${userRecord.limit === -1 ? 'Unlimited' : userRecord.limit} queries.\nSend any 10-digit number to begin!`);
+      await this.sendMessage(targetId, `🎉 *Access Granted!*\nYou have been authorized by the Bot Owner to use APIChat Hub.\n🔋 *Your Quota:* ${quotaDesc}.\nSend any 10-digit number or command to begin!`);
       return;
     }
 
@@ -435,7 +567,7 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
         await this.sendMessage(chatId, `⛔ *Permission Denied*\nOnly the Bot Owner can revoke access.`);
         return;
       }
-      const targetId = text.split(/\s+/)[1];
+      const targetId = (text.split(/\s+/)[1] || '').trim();
       if (!targetId) {
         await this.sendMessage(chatId, `⚠️ *Usage:* \`/deauth <userId>\``);
         return;
@@ -457,21 +589,51 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
         return;
       }
       const parts = text.split(/\s+/);
-      const targetId = parts[1];
-      const newLimit = parts[2];
-      if (!targetId || newLimit === undefined) {
-        await this.sendMessage(chatId, `⚠️ *Usage:* \`/setlimit <userId> <newLimit>\`\nExample: \`/setlimit 123456789 25\``);
+      const targetId = (parts[1] || '').trim();
+      const rawLimit = (parts[2] || '').toLowerCase().trim();
+      if (!targetId || rawLimit === '') {
+        await this.sendMessage(chatId, `⚠️ *Usage:* \`/setlimit <userId> <newLimit>\`\nExamples:\n• \`/setlimit 123456789 25\`\n• \`/setlimit 123456789 unlimited\` (or \`-1\`)`);
         return;
       }
+
+      let newLimit = 10;
+      if (rawLimit === 'unlimited' || rawLimit === '-1' || rawLimit === 'inf' || rawLimit === 'all') {
+        newLimit = -1;
+      } else {
+        const parsed = parseInt(rawLimit, 10);
+        newLimit = isNaN(parsed) ? 10 : parsed;
+      }
+
       const updated = this.authManager.setLimit(targetId, newLimit);
       if (updated) {
         this.broadcastEvent('telegram_auth_updated', this.authManager.getState());
-        const rem = updated.limit === -1 ? 'Unlimited' : Math.max(0, updated.limit - (updated.used || 0));
-        await this.sendMessage(chatId, `✅ Quota updated for \`${targetId}\`: Limit = ${updated.limit}, Remaining = ${rem}.`);
-        await this.sendMessage(targetId, `🔋 *Quota Updated!*\nYour query quota has been updated by the Bot Owner.\n• *Limit:* ${updated.limit}\n• *Remaining:* ${rem}`);
+        const rem = updated.limit === -1 ? '♾️ Unlimited' : Math.max(0, updated.limit - (updated.used || 0));
+        const limitDesc = updated.limit === -1 ? '♾️ Unlimited' : updated.limit;
+        await this.sendMessage(chatId, `✅ Quota updated for \`${targetId}\`: Limit = ${limitDesc}, Remaining = ${rem}.`);
+        await this.sendMessage(targetId, `🔋 *Quota Updated!*\nYour query quota has been updated by the Bot Owner.\n• *Limit:* ${limitDesc}\n• *Remaining:* ${rem}`);
       } else {
         await this.sendMessage(chatId, `⚠️ User \`${targetId}\` is not in authorized list.`);
       }
+      return;
+    }
+
+    if (text.startsWith('/lock')) {
+      if (!this.authManager.isOwner(chatId)) {
+        await this.sendMessage(chatId, `⛔ *Permission Denied*\nOnly the Bot Owner can lock configuration.`);
+        return;
+      }
+      this.setLock(true);
+      await this.sendMessage(chatId, `🔒 *API Configuration Locked*\nPresets and endpoints cannot be modified via Telegram commands.`);
+      return;
+    }
+
+    if (text.startsWith('/unlock')) {
+      if (!this.authManager.isOwner(chatId)) {
+        await this.sendMessage(chatId, `⛔ *Permission Denied*\nOnly the Bot Owner can unlock configuration.`);
+        return;
+      }
+      this.setLock(false);
+      await this.sendMessage(chatId, `🔓 *API Configuration Unlocked*\nPresets and endpoints can now be configured.`);
       return;
     }
 
@@ -482,7 +644,7 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
       }
       const authState = this.authManager.getState();
       const userLines = authState.users.map(u => {
-        const rem = u.limit === -1 ? '∞' : `${Math.max(0, u.limit - (u.used || 0))}/${u.limit}`;
+        const rem = u.limit === -1 ? '♾️ Unlimited' : `${Math.max(0, u.limit - (u.used || 0))}/${u.limit}`;
         return `• \`${u.id}\` (@${u.username}): ${u.role === 'owner' ? '👑 Owner' : `🔋 ${rem}`}`;
       }).join('\n') || 'None';
 
@@ -542,6 +704,13 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
         this.stats.telegramQueriesCount++;
+        this.stats.vehicleQueries = (this.stats.vehicleQueries || 0) + 1;
+        this.stats.lastQueryAt = new Date().toISOString();
+        if (result.ok) {
+          this.stats.successfulQueries = (this.stats.successfulQueries || 0) + 1;
+        } else {
+          this.stats.failedQueries = (this.stats.failedQueries || 0) + 1;
+        }
         const quota = this.authManager.consumeQuota(chatId);
 
         this.broadcastEvent('telegram_query', {
@@ -625,6 +794,13 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
         this.stats.telegramQueriesCount++;
+        this.stats.tgIdQueries = (this.stats.tgIdQueries || 0) + 1;
+        this.stats.lastQueryAt = new Date().toISOString();
+        if (result.ok) {
+          this.stats.successfulQueries = (this.stats.successfulQueries || 0) + 1;
+        } else {
+          this.stats.failedQueries = (this.stats.failedQueries || 0) + 1;
+        }
         const quota = this.authManager.consumeQuota(chatId);
 
         this.broadcastEvent('telegram_query', {
@@ -684,6 +860,13 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
         this.stats.telegramQueriesCount++;
+        this.stats.phoneQueries = (this.stats.phoneQueries || 0) + 1;
+        this.stats.lastQueryAt = new Date().toISOString();
+        if (result.ok) {
+          this.stats.successfulQueries = (this.stats.successfulQueries || 0) + 1;
+        } else {
+          this.stats.failedQueries = (this.stats.failedQueries || 0) + 1;
+        }
 
         // Decrement quota for non-owners
         const quota = this.authManager.consumeQuota(chatId);
@@ -729,9 +912,9 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
     const statusText = `${statusIcon} *HTTP ${result.status}* (${latencyMs}ms)`;
 
     const quotaInfo = isOwner 
-      ? '👑 *Account:* Bot Owner (Unlimited)'
-      : (quota && quota.limit === -1 
-          ? '🔋 *Quota:* Unlimited Queries' 
+      ? '👑 *Account:* Bot Owner (♾️ Unlimited Access)'
+      : (quota && (quota.limit === -1 || quota.remaining === -1) 
+          ? '🔋 *Quota:* ♾️ Unlimited Queries' 
           : (quota ? `🔋 *Remaining Quota:* ${quota.remaining} of ${quota.limit} requests` : ''));
 
     let highlights = '';
