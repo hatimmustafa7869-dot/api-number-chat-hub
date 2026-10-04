@@ -195,8 +195,9 @@ class TelegramBotService {
 
     if (!chatId || !text) return;
 
-    // 🔒 1. Gatekeeper Authorization Check
-    const auth = this.authManager.checkAccess(chatId, fromUser);
+    try {
+      // 🔒 1. Gatekeeper Authorization Check
+      const auth = this.authManager.checkAccess(chatId, fromUser);
 
     if (!auth.allowed) {
       const ownerId = this.authManager.ownerId || '2051992452';
@@ -485,11 +486,19 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
       return;
     }
 
+    // Extract numeric digits (handle prefixes like +91 or 0)
+    let cleanNumber = text.replace(/\D/g, '');
+    if (cleanNumber.length === 12 && cleanNumber.startsWith('91')) {
+      cleanNumber = cleanNumber.slice(2);
+    } else if (cleanNumber.length === 11 && cleanNumber.startsWith('0')) {
+      cleanNumber = cleanNumber.slice(1);
+    }
+
     // 2. Check if message is a Vehicle Lookup
     let vehicleNum = null;
     if (text.startsWith('/vehicle') || text.startsWith('/rc')) {
       vehicleNum = text.replace(/^\/(vehicle|rc)\s*/i, '').trim().toUpperCase().replace(/[\s-]/g, '');
-    } else if (!cleanNumber || cleanNumber.length !== 10) {
+    } else if (cleanNumber.length !== 10) {
       const stripped = text.trim().toUpperCase().replace(/[\s-]/g, '');
       if (/^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{4}$/i.test(stripped)) {
         vehicleNum = stripped;
@@ -500,7 +509,10 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
       await this.sendMessage(chatId, `⏳ *Querying Vehicle RTO Registry for \`${vehicleNum}\`...*`);
       const startTime = Date.now();
       try {
-        const vehicleApi = this.apiStore ? this.apiStore.getById('vehicle_lookup') : null;
+        const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
+        const vehicleApi = (activeApi && activeApi.inputType === 'vehicle')
+          ? activeApi
+          : (this.apiStore ? (this.apiStore.getById('vehicle_lookup') || activeApi) : null);
         const targetUrl = vehicleApi ? vehicleApi.url : '/api/mock/vehicle-lookup';
         const paramName = vehicleApi ? vehicleApi.paramName : 'rc';
         let headers = {};
@@ -550,9 +562,17 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
       // Execute query using our shared query engine
       const startTime = Date.now();
       try {
-        const phoneApi = this.apiStore ? (this.apiStore.getById('phone_lookup') || this.apiStore.getActiveApi()) : null;
-        const targetUrl = phoneApi ? phoneApi.url : this.activeApiUrl;
+        const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
+        const phoneApi = (activeApi && activeApi.inputType === 'number')
+          ? activeApi
+          : (this.apiStore ? (this.apiStore.getById('phone_lookup') || activeApi) : null);
+
+        let targetUrl = phoneApi ? phoneApi.url : this.activeApiUrl;
+        if ((!targetUrl || targetUrl.includes('/api/mock/')) && this.activeApiUrl && !this.activeApiUrl.includes('/api/mock/')) {
+          targetUrl = this.activeApiUrl;
+        }
         const paramName = phoneApi ? phoneApi.paramName : this.activeParamName;
+
         let headers = {};
         if (phoneApi?.authHeader) {
           headers['Authorization'] = phoneApi.authHeader;
@@ -604,6 +624,12 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
       chatId,
       `⚠️ *Unrecognized Input Format*\n\n• For *Phone Lookup*, send any *10-digit number* (e.g. \`9876543210\`)\n• For *Vehicle RC Lookup*, send registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)\n• Type \`/apis\` to see all active APIs`
     );
+    } catch (err) {
+      console.error(`Error handling Telegram message from ${chatId}:`, err);
+      try {
+        await this.sendMessage(chatId, `⚠️ An internal error occurred: ${err.message}`);
+      } catch {}
+    }
   }
 
   // Format response for Telegram Markdown
@@ -703,7 +729,7 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
 🔒 *Gateway:* Protected Cloud Proxy
 ${quotaInfo ? quotaInfo + '\n' : ''}
 ${highlights ? highlights + '\n\n' : ''}📦 *Raw JSON Payload:*
-\`\`\`json
+\`\`\`
 ${jsonString}
 \`\`\``
     );
@@ -722,11 +748,29 @@ ${jsonString}
       if (replyMarkup) {
         payload.reply_markup = replyMarkup;
       }
-      await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      const data = await res.json();
+      if (!data.ok) {
+        console.warn(`Telegram sendMessage Markdown error: ${data.description}. Retrying as plain text...`);
+        // Fallback: send as plain text without parse_mode if Markdown parsing failed
+        const plainPayload = {
+          chat_id: chatId,
+          text: text.replace(/[*`]/g, ''),
+          disable_web_page_preview: true
+        };
+        if (replyMarkup) {
+          plainPayload.reply_markup = replyMarkup;
+        }
+        await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(plainPayload)
+        });
+      }
     } catch (err) {
       console.error(`Failed to send Telegram message to ${chatId}:`, err.message);
     }
