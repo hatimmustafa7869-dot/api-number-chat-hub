@@ -1267,8 +1267,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Update Telegram target API when user changes endpoint in sidebar
+  // Update active endpoint and Telegram target API when user changes endpoint in sidebar
   elements.apiUrlInput.addEventListener('change', () => {
+    saveSidebarToActiveApi(state.activeApiId, true);
     authFetch('/api/telegram/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1657,18 +1658,96 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ============================================================
-  // --- MULTI-API HUB MANAGEMENT (Tabs, Selection, CRUD) ---
+  // --- MULTI-API HUB MANAGEMENT (Tabs, Selection, CRUD, Storage) ---
   // ============================================================
+
+  const STORAGE_KEY_APIS = 'apichat_endpoints_cache_v2';
+  const STORAGE_KEY_ACTIVE = 'apichat_active_api_id_v2';
+
+  // Save current APIs & active selection to localStorage immediately
+  function saveApisToLocalStorage() {
+    try {
+      if (Array.isArray(state.apis) && state.apis.length > 0) {
+        localStorage.setItem(STORAGE_KEY_APIS, JSON.stringify(state.apis));
+      }
+      if (state.activeApiId) {
+        localStorage.setItem(STORAGE_KEY_ACTIVE, state.activeApiId);
+      }
+    } catch (e) {
+      console.warn('Failed to save APIs to localStorage:', e);
+    }
+  }
+
+  // Load saved APIs from localStorage
+  function loadApisFromLocalStorage() {
+    try {
+      const savedApis = localStorage.getItem(STORAGE_KEY_APIS);
+      const savedActive = localStorage.getItem(STORAGE_KEY_ACTIVE);
+      if (savedApis) {
+        const parsed = JSON.parse(savedApis);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          state.apis = parsed;
+          if (savedActive && parsed.some(a => a.id === savedActive)) {
+            state.activeApiId = savedActive;
+          } else {
+            state.activeApiId = parsed[0].id;
+          }
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load APIs from localStorage:', e);
+    }
+    return false;
+  }
 
   async function loadApiEndpoints() {
     try {
-      const res = await authFetch('/api/endpoints');
+      const res = await fetch('/api/endpoints');
       if (!res.ok) return;
       const data = await res.json();
       const rawList = data.endpoints || (data.data && data.data.apis) || [];
       if (data.ok && Array.isArray(rawList)) {
-        state.apis = rawList;
-        state.activeApiId = data.activeId || (data.data && data.data.activeApiId) || (rawList[0] ? rawList[0].id : null);
+        const serverApis = rawList;
+
+        // Smart merge: If client has custom non-mock URLs in memory or localStorage, preserve them!
+        if (Array.isArray(state.apis) && state.apis.length > 0) {
+          state.apis.forEach(localApi => {
+            const serverMatch = serverApis.find(s => s.id === localApi.id);
+            if (serverMatch) {
+              if (localApi.url && !localApi.url.includes('/api/mock/') && (!serverMatch.url || serverMatch.url.includes('/api/mock/'))) {
+                serverMatch.url = localApi.url;
+                serverMatch.paramName = localApi.paramName || serverMatch.paramName;
+                serverMatch.method = localApi.method || serverMatch.method;
+                serverMatch.authHeader = localApi.authHeader || serverMatch.authHeader;
+                serverMatch.customHeaders = localApi.customHeaders || serverMatch.customHeaders;
+                serverMatch.bodyType = localApi.bodyType || serverMatch.bodyType;
+                // Sync back to backend in background
+                authFetch(`/api/endpoints/${encodeURIComponent(serverMatch.id)}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    url: serverMatch.url,
+                    paramName: serverMatch.paramName,
+                    method: serverMatch.method,
+                    authHeader: serverMatch.authHeader,
+                    customHeaders: serverMatch.customHeaders,
+                    bodyType: serverMatch.bodyType
+                  })
+                }).catch(() => {});
+              }
+            }
+          });
+        }
+
+        state.apis = serverApis;
+        if (data.activeId && serverApis.some(a => a.id === data.activeId)) {
+          state.activeApiId = data.activeId;
+        } else if (!state.activeApiId || !serverApis.some(a => a.id === state.activeApiId)) {
+          state.activeApiId = serverApis[0] ? serverApis[0].id : 'phone_lookup';
+        }
+
+        saveApisToLocalStorage();
         renderApiTabs();
         
         // Find active endpoint and apply to UI
@@ -1688,18 +1767,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (state.apis || []).forEach(api => {
       const isActive = api.id === state.activeApiId;
+      const isCustomUrl = api.url && !api.url.includes('/api/mock/');
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `api-tab-btn ${isActive ? 'active' : ''}`;
-      btn.title = `${api.name} (${api.method} ${api.url})`;
+      btn.title = `${api.name}\nTarget: ${api.url || '(none)'}`;
 
-      const deleteBtnHtml = !api.isSystem
+      const deleteBtnHtml = !api.isBuiltin && !api.isSystem
         ? `<span class="tab-delete-btn" title="Delete API" data-id="${escapeAttr(api.id)}">&times;</span>`
+        : '';
+
+      const dotHtml = isCustomUrl
+        ? `<span class="tab-status-dot active" title="Custom API configured">●</span>`
         : '';
 
       btn.innerHTML = `
         <span class="api-tab-icon">${escapeHtml(api.icon || '⚡')}</span>
         <span class="api-tab-label">${escapeHtml(api.name)}</span>
+        ${dotHtml}
         ${deleteBtnHtml}
       `;
 
@@ -1734,13 +1819,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentHeaders = elements.customHeadersInput ? elements.customHeadersInput.value.trim() : '';
     const currentBodyType = elements.postBodyTypeSelect ? elements.postBodyTypeSelect.value : 'json';
 
-    // Immediately update in-memory object
+    // Immediately update in-memory object and localStorage
     api.url = currentUrl;
     api.paramName = currentParam;
     api.method = currentMethod;
     api.authHeader = currentAuth;
     api.customHeaders = currentHeaders;
     api.bodyType = currentBodyType;
+    saveApisToLocalStorage();
 
     if (showFeedback && elements.saveActiveApiStatus) {
       elements.saveActiveApiStatus.textContent = 'Saving...';
@@ -1764,6 +1850,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (data.ok && data.data) {
         Object.assign(api, data.data);
+        saveApisToLocalStorage();
+        renderApiTabs();
         if (showFeedback && elements.saveActiveApiStatus) {
           elements.saveActiveApiStatus.textContent = `✓ Stored for ${api.name}`;
           elements.saveActiveApiStatus.className = 'save-status-indicator saved';
@@ -1775,8 +1863,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error('Failed to save API settings:', err);
       if (showFeedback && elements.saveActiveApiStatus) {
-        elements.saveActiveApiStatus.textContent = '⚠️ Could not save to server';
-        elements.saveActiveApiStatus.className = 'save-status-indicator error';
+        elements.saveActiveApiStatus.textContent = '✓ Saved locally';
+        elements.saveActiveApiStatus.className = 'save-status-indicator saved';
       }
     }
   }
@@ -1786,13 +1874,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const api = state.apis.find(a => a.id === state.activeApiId);
     if (!api) return;
 
-    // Immediately update in-memory object
+    // Immediately update in-memory object and localStorage on every change
     api.url = elements.apiUrlInput.value.trim();
     api.paramName = elements.queryParamInput.value.trim() || (api.inputType === 'vehicle' ? 'rc' : 'number');
     api.method = elements.httpMethodSelect.value;
     if (elements.authHeaderInput) api.authHeader = elements.authHeaderInput.value.trim();
     if (elements.customHeadersInput) api.customHeaders = elements.customHeadersInput.value.trim();
     if (elements.postBodyTypeSelect) api.bodyType = elements.postBodyTypeSelect.value;
+    saveApisToLocalStorage();
 
     updateRequestPreview();
 
@@ -1804,7 +1893,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(autoSaveTimeout);
     autoSaveTimeout = setTimeout(() => {
       saveSidebarToActiveApi(state.activeApiId, true);
-    }, 600);
+    }, 500);
   }
 
   async function selectActiveApi(id) {
@@ -1822,6 +1911,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.authHeaderInput) prevApi.authHeader = elements.authHeaderInput.value.trim();
         if (elements.customHeadersInput) prevApi.customHeaders = elements.customHeadersInput.value.trim();
         if (elements.postBodyTypeSelect) prevApi.bodyType = elements.postBodyTypeSelect.value;
+
+        // Immediately update localStorage!
+        saveApisToLocalStorage();
 
         // Persist previous API settings to backend
         authFetch(`/api/endpoints/${encodeURIComponent(previousApiId)}`, {
@@ -1841,6 +1933,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // STEP 2: Switch to new active API
     state.activeApiId = id;
+    saveApisToLocalStorage();
     renderApiTabs();
     const activeApi = (state.apis || []).find(a => a.id === id);
     if (activeApi) {
@@ -1907,9 +2000,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update sample chips dynamically
     updateSampleChipsForApi(api);
 
-    // Reset input value
-    elements.numberInput.value = '';
-    elements.numberInput.dispatchEvent(new Event('input'));
     updateRequestPreview();
   }
 
@@ -2263,14 +2353,26 @@ document.addEventListener('DOMContentLoaded', () => {
     return str.replace(/"/g, '&quot;');
   }
 
+  // 1. Instantly restore from localStorage before any async calls!
+  const hasLocal = loadApisFromLocalStorage();
+  if (hasLocal) {
+    renderApiTabs();
+    const active = state.apis.find(a => a.id === state.activeApiId) || state.apis[0];
+    if (active) {
+      applyApiToUI(active, false);
+    }
+  }
+
   // Initial runs
   updateRequestPreview();
   restoreLockedConfig();
 
-  // Check login session before initializing protected data
+  // Load backend endpoints immediately (sync with server)
+  loadApiEndpoints();
+
+  // Check login session for protected features (Telegram status, broadcast, users)
   checkAuthSession().then((authenticated) => {
     if (authenticated) {
-      loadApiEndpoints();
       fetchTelegramStatus();
       fetchTelegramUsers();
       initEventStream();

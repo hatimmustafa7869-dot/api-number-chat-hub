@@ -92,17 +92,24 @@ class ApiStore {
     this.save();
   }
 
-  // Save to disk
+  // Save to disk (atomic write with fallback)
   save() {
+    const data = {
+      activeApiId: this.activeApiId,
+      apis: this.apis,
+      updatedAt: new Date().toISOString()
+    };
+    const content = JSON.stringify(data, null, 2);
     try {
-      const data = {
-        activeApiId: this.activeApiId,
-        apis: this.apis,
-        updatedAt: new Date().toISOString()
-      };
-      fs.writeFileSync(STORE_FILE, JSON.stringify(data, null, 2), 'utf8');
-    } catch (err) {
-      console.error('Error saving api_store.json:', err.message);
+      const tmpFile = `${STORE_FILE}.tmp`;
+      fs.writeFileSync(tmpFile, content, 'utf8');
+      fs.renameSync(tmpFile, STORE_FILE);
+    } catch {
+      try {
+        fs.writeFileSync(STORE_FILE, content, 'utf8');
+      } catch (err) {
+        console.error('Error saving api_store.json:', err.message);
+      }
     }
   }
 

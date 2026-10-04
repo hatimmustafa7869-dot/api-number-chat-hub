@@ -1,6 +1,7 @@
 /**
  * Admin Authentication & Session Management Module
- * Protects web access with customizable username and password
+ * Protects web access with customizable username and password.
+ * Uses persistent HMAC signed tokens that survive server restarts and multi-process workers.
  */
 
 const fs = require('fs');
@@ -13,17 +14,22 @@ class AdminAuthService {
   constructor() {
     this.username = 'admin';
     this.password = 'admin123';
+    this.secret = crypto.randomBytes(32).toString('hex');
     this.activeSessions = new Map(); // token -> { username, createdAt, expiresAt }
     this.load();
   }
 
-  // Load credentials from disk or environment variables
+  // Load credentials and secret from disk or environment variables
   load() {
     try {
       if (fs.existsSync(AUTH_FILE)) {
         const data = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
         this.username = process.env.ADMIN_USERNAME || data.username || 'admin';
         this.password = process.env.ADMIN_PASSWORD || data.password || 'admin123';
+        this.secret = process.env.SESSION_SECRET || data.secret || this.secret;
+        if (!data.secret) {
+          this.save();
+        }
         return;
       }
     } catch (err) {
@@ -31,21 +37,38 @@ class AdminAuthService {
     }
     this.username = process.env.ADMIN_USERNAME || 'admin';
     this.password = process.env.ADMIN_PASSWORD || 'admin123';
+    this.secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
     this.save();
   }
 
-  // Save credentials to disk
+  // Save credentials and persistent secret to disk
   save() {
     try {
       const data = {
         username: this.username,
         password: this.password,
+        secret: this.secret,
         updatedAt: new Date().toISOString()
       };
       fs.writeFileSync(AUTH_FILE, JSON.stringify(data, null, 2), 'utf8');
     } catch (err) {
       console.error('Error saving admin_auth.json:', err.message);
     }
+  }
+
+  // Generate cryptographically signed token
+  generateSignedToken(username) {
+    const now = Date.now();
+    const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days persistent session
+    const payloadObj = {
+      u: username,
+      iat: now,
+      exp: expiresAt,
+      rnd: crypto.randomBytes(8).toString('hex')
+    };
+    const payloadB64 = Buffer.from(JSON.stringify(payloadObj)).toString('base64url');
+    const signature = crypto.createHmac('sha256', this.secret).update(payloadB64).digest('base64url');
+    return `${payloadB64}.${signature}`;
   }
 
   // Authenticate credentials & generate session token
@@ -55,13 +78,12 @@ class AdminAuthService {
     }
 
     if (username.trim() === this.username && password.trim() === this.password) {
-      const token = crypto.randomBytes(32).toString('hex');
-      const now = Date.now();
-      const expiresAt = now + 7 * 24 * 60 * 60 * 1000; // 7 days session
+      const token = this.generateSignedToken(this.username);
+      const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
 
       this.activeSessions.set(token, {
         username: this.username,
-        createdAt: now,
+        createdAt: Date.now(),
         expiresAt
       });
 
@@ -76,14 +98,37 @@ class AdminAuthService {
     return { ok: false, error: 'Invalid username or password' };
   }
 
-  // Validate session token
+  // Validate session token (Stateless verification survives server restarts)
   verifyToken(token) {
     if (!token || typeof token !== 'string') return false;
-    const session = this.activeSessions.get(token.trim());
+    const cleanToken = token.trim();
+
+    // Check signed token format
+    const parts = cleanToken.split('.');
+    if (parts.length === 2) {
+      const [payloadB64, signature] = parts;
+      try {
+        const expectedSig = crypto.createHmac('sha256', this.secret).update(payloadB64).digest('base64url');
+        if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
+          const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+          if (Date.now() <= payload.exp) {
+            return {
+              username: payload.u,
+              expiresAt: payload.exp
+            };
+          }
+        }
+      } catch {
+        // Fall through to memory check
+      }
+    }
+
+    // Fallback: Check memory map
+    const session = this.activeSessions.get(cleanToken);
     if (!session) return false;
 
     if (Date.now() > session.expiresAt) {
-      this.activeSessions.delete(token);
+      this.activeSessions.delete(cleanToken);
       return false;
     }
     return session;
@@ -111,18 +156,17 @@ class AdminAuthService {
       this.username = newUsername.trim();
     }
     this.password = newPassword.trim();
+    this.secret = crypto.randomBytes(32).toString('hex'); // Invalidate old tokens
     this.save();
 
-    // Invalidate old sessions
     this.activeSessions.clear();
 
-    // Create a new session for the updated credentials
-    const token = crypto.randomBytes(32).toString('hex');
-    const now = Date.now();
+    const token = this.generateSignedToken(this.username);
+    const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
     this.activeSessions.set(token, {
       username: this.username,
-      createdAt: now,
-      expiresAt: now + 7 * 24 * 60 * 60 * 1000
+      createdAt: Date.now(),
+      expiresAt
     });
 
     return {

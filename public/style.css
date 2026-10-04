@@ -2122,6 +2122,13 @@ body.light-theme .login-overlay {
   color: #fff;
 }
 
+.tab-status-dot {
+  font-size: 8px;
+  color: #10b981;
+  margin-left: 2px;
+  filter: drop-shadow(0 0 4px #10b981);
+}
+
 .api-tab-btn .tab-del-btn {
   padding: 2px 4px;
   border: none;

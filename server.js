@@ -298,8 +298,8 @@ app.post('/api/proxy', requireAuth, async (req, res) => {
 // MULTI-API ENDPOINT MANAGEMENT (Protected)
 // ==========================================
 
-// Get all configured APIs
-app.get('/api/endpoints', requireAuth, (req, res) => {
+// Get all configured APIs (Public so UI can always initialize tabs immediately)
+app.get('/api/endpoints', (req, res) => {
   const storeData = apiStore.getAll();
   res.json({
     ok: true,
@@ -334,6 +334,11 @@ app.put('/api/endpoints/:id', requireAuth, (req, res) => {
     const updated = apiStore.updateApi(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ ok: false, error: 'API not found' });
+    }
+    // If updated API is currently active or phone lookup, keep telegram bot synchronized
+    const active = apiStore.getActiveApi();
+    if (!telegramBot.isLocked && active && (active.id === req.params.id || req.params.id === 'phone_lookup')) {
+      telegramBot.setConfig(updated.url, updated.paramName);
     }
     res.json({
       ok: true,
