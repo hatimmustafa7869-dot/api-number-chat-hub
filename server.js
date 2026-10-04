@@ -69,6 +69,28 @@ async function executeApiQuery({
 
   const startTime = Date.now();
 
+  const ownerId = process.env.TELEGRAM_OWNER_ID || '2051992452';
+  const cleanQuery = String(queryVal || '').trim();
+
+  // 🔒 Security Encryption Shield: Protect Owner's Telegram ID from being looked up!
+  const isTgLookup = url.includes('tg') || url.includes('telegram') || paramName === 'tgid' || paramName === 'id';
+  if (cleanQuery && String(ownerId).trim() && cleanQuery === String(ownerId).trim() && isTgLookup) {
+    return {
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden (Protected Administrative ID)',
+      error: '⛔ Access Denied: This Telegram ID is protected by administrative encryption and security protocols. Query not permitted.',
+      isProtected: true,
+      latencyMs: 8,
+      data: {
+        status: 'error',
+        code: 'ADMIN_ID_PROTECTED',
+        message: 'Security encryption prevents resolving administrative owner IDs to phone numbers.',
+        timestamp: new Date().toISOString()
+      }
+    };
+  }
+
   let finalUrl = url.trim();
 
   // If relative path (e.g. /api/mock/...), prepend local server origin
@@ -802,6 +824,56 @@ app.get('/api/mock/vehicle-lookup', (req, res) => {
       permitType: selectedVehicle.class.includes('Two') ? 'Private Motorcycle' : 'Private Passenger Car (LMV)',
       blacklistStatus: 'Clean / No Active Enforcement Violations',
       totalChallans: 0
+    }
+  });
+});
+
+// Mock: Telegram User ID to Phone Number Lookup
+app.get('/api/mock/tg-id-lookup', (req, res) => {
+  const tgid = String(req.query.tgid || req.query.id || req.query.query || '').trim();
+  const ownerId = process.env.TELEGRAM_OWNER_ID || (telegramBot?.authManager?.ownerId) || '2051992452';
+
+  if (!tgid) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Parameter "tgid" is required (e.g. ?tgid=123456789)'
+    });
+  }
+
+  // 🔒 Security Encryption Shield: Protect Owner's ID from being looked up!
+  if (tgid === String(ownerId).trim()) {
+    return res.status(403).json({
+      status: 'error',
+      code: 'ADMIN_ID_PROTECTED',
+      error: '⛔ Access Denied: This Telegram ID is protected by administrative encryption and security protocols. Query not permitted.'
+    });
+  }
+
+  const hash = Array.from(tgid).reduce((acc, char, idx) => acc + char.charCodeAt(0) * (idx + 1), 0);
+  const samplePhones = ['9876543210', '9123456789', '9811223344', '9988776655', '9701234567', '9845012345'];
+  const carriers = ['Reliance Jio Infocomm', 'Bharti Airtel Limited', 'Vodafone Idea (Vi)', 'BSNL Mobile'];
+  const circles = ['Delhi NCR', 'Maharashtra & Goa', 'Karnataka', 'Tamil Nadu', 'Gujarat'];
+  const phone = samplePhones[hash % samplePhones.length];
+  const carrier = carriers[hash % carriers.length];
+  const circle = circles[hash % circles.length];
+
+  res.json({
+    status: 'success',
+    code: 200,
+    timestamp: new Date().toISOString(),
+    query: {
+      telegramId: tgid
+    },
+    profile: {
+      telegramId: tgid,
+      username: `user_${tgid.slice(-4)}`,
+      name: `Telegram User (${tgid.slice(0, 3)}***)`,
+      linkedPhone: `+91 ${phone}`,
+      carrier: carrier,
+      circle: circle,
+      simStatus: 'Active / Registered',
+      authMethod: 'Telegram 2FA SMS Bind',
+      encryptionStatus: 'Standard Profile (Unrestricted)'
     }
   });
 });

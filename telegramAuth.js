@@ -5,16 +5,35 @@
 
 const fs = require('fs');
 const path = require('path');
+const db = require('./database');
 
 const STORAGE_FILE = path.join(__dirname, 'telegram_users.json');
 
 class TelegramAuthManager {
   constructor() {
-    this.ownerId = '2051992452'; // Hardcoded designated Bot Owner
+    this.ownerId = process.env.TELEGRAM_OWNER_ID || '2051992452'; // Designated Bot Owner
     this.defaultLimit = 10;
     this.users = {}; // id -> { id, username, role, limit, used, authorizedAt }
     this.pendingRequests = {}; // id -> { id, username, requestedAt }
     this.load();
+    this.initDatabase();
+  }
+
+  // Initialize and merge from multi-tier database
+  async initDatabase() {
+    try {
+      await db.initMySQL();
+      const state = await db.loadTelegramData();
+      if (state && state.users) {
+        this.ownerId = state.ownerId || this.ownerId;
+        this.defaultLimit = state.defaultLimit || this.defaultLimit;
+        // Merge into current state
+        Object.assign(this.users, state.users);
+        Object.assign(this.pendingRequests, state.pendingRequests || {});
+      }
+    } catch (err) {
+      console.warn('[TelegramAuth] Database initialization notice:', err.message);
+    }
   }
 
   // Load from disk or environment variables
@@ -44,24 +63,22 @@ class TelegramAuthManager {
     } catch (err) {
       console.error('Error loading telegram_users.json:', err.message);
     }
-    // Initialize default file if not exists
-    this.setOwner('2051992452', 'BotOwner');
+    // Initialize default owner if not exists
+    this.setOwner(this.ownerId, 'BotOwner');
   }
 
-  // Save to disk
+  // Save to disk and database engine
   save() {
-    try {
-      const data = {
-        ownerId: this.ownerId,
-        defaultLimit: this.defaultLimit,
-        users: this.users,
-        pendingRequests: this.pendingRequests,
-        updatedAt: new Date().toISOString()
-      };
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(data, null, 2), 'utf8');
-    } catch (err) {
-      console.error('Error saving telegram_users.json:', err.message);
-    }
+    const data = {
+      ownerId: this.ownerId,
+      defaultLimit: this.defaultLimit,
+      users: this.users,
+      pendingRequests: this.pendingRequests,
+      updatedAt: new Date().toISOString()
+    };
+
+    // Save to multi-tier database engine (survives git pulls and redeploys)
+    db.saveTelegramData(data).catch(() => {});
   }
 
   // Check if someone is the owner

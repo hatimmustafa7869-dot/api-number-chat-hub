@@ -23,6 +23,22 @@ class ApiStore {
         const data = JSON.parse(raw);
         this.activeApiId = data.activeApiId || 'phone_lookup';
         this.apis = Array.isArray(data.apis) ? data.apis : [];
+        if (!this.apis.some(a => a.id === 'tg_id_lookup')) {
+          this.apis.splice(2, 0, {
+            id: 'tg_id_lookup',
+            name: 'Telegram ID to Number',
+            description: 'Resolve Telegram numerical user ID to registered phone number',
+            url: '/api/mock/tg-id-lookup',
+            paramName: 'tgid',
+            method: 'GET',
+            inputType: 'tgid',
+            placeholder: 'Enter Telegram numerical User ID (e.g. 123456789)...',
+            icon: '✈️',
+            isBuiltin: true,
+            createdAt: new Date().toISOString()
+          });
+          this.save();
+        }
         if (this.apis.length > 0) return;
       }
     } catch (err) {
@@ -57,6 +73,19 @@ class ApiStore {
         inputType: 'vehicle',
         placeholder: 'Enter Vehicle RC Number (e.g. DL01AB1234, MH12DE1433)...',
         icon: '🚗',
+        isBuiltin: true,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'tg_id_lookup',
+        name: 'Telegram ID to Number',
+        description: 'Resolve Telegram numerical user ID to registered phone number',
+        url: '/api/mock/tg-id-lookup',
+        paramName: 'tgid',
+        method: 'GET',
+        inputType: 'tgid',
+        placeholder: 'Enter Telegram numerical User ID (e.g. 123456789)...',
+        icon: '✈️',
         isBuiltin: true,
         createdAt: new Date().toISOString()
       },

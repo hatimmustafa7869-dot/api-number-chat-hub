@@ -524,6 +524,24 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.inputValidationMsg.style.color = 'var(--warning)';
         elements.sendBtn.disabled = false;
       }
+    } else if (activeApi.inputType === 'tgid') {
+      let val = e.target.value.replace(/\D/g, '');
+      if (val.length > 15) val = val.slice(0, 15);
+      e.target.value = val;
+      const len = val.length;
+      elements.digitCounter.textContent = `${len} digits`;
+
+      if (len >= 5) {
+        elements.digitCounter.className = 'digit-counter complete';
+        elements.inputValidationMsg.textContent = '✓ Ready to query Telegram User ID.';
+        elements.inputValidationMsg.style.color = 'var(--success)';
+        elements.sendBtn.disabled = false;
+      } else {
+        elements.digitCounter.className = 'digit-counter typing';
+        elements.inputValidationMsg.textContent = 'Enter numerical Telegram ID (5 to 15 digits).';
+        elements.inputValidationMsg.style.color = 'var(--warning)';
+        elements.sendBtn.disabled = false;
+      }
     } else {
       elements.digitCounter.textContent = `${e.target.value.length} chars`;
       elements.inputValidationMsg.textContent = 'Query ready to send.';
@@ -560,6 +578,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (activeApi.inputType === 'vehicle') {
       if (queryVal.length < 5) {
         alert('Please enter a valid vehicle RC number (e.g. DL01AB1234).');
+        elements.numberInput.focus();
+        return;
+      }
+    } else if (activeApi.inputType === 'tgid') {
+      if (!/^\d{5,15}$/.test(queryVal)) {
+        alert('Please enter a valid numerical Telegram ID (5 to 15 digits).');
         elements.numberInput.focus();
         return;
       }
@@ -775,6 +799,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Extract vehicle card from JSON data if applicable
     const vehicleCardHtml = buildVehicleCard(result.data);
 
+    // Extract Telegram User ID profile card (if detected)
+    const tgUserCardHtml = buildTgUserCard(result.data);
+
+    // Extract Owner Security Encryption Shield card (if blocked)
+    const protectedCardHtml = buildProtectedCard(result.data, result);
+
     // Extract smart cards from JSON data if applicable
     const smartCardsHtml = buildSmartCards(result.data);
 
@@ -810,6 +840,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <!-- Vehicle RC & RTO Card (if detected) -->
           ${vehicleCardHtml}
+
+          <!-- Telegram User Card (if detected) -->
+          ${tgUserCardHtml}
+
+          <!-- Administrative Security Shield Card (if protected/denied) -->
+          ${protectedCardHtml}
 
           <!-- Highlight Key Value Cards (if detected) -->
           ${smartCardsHtml}
@@ -932,6 +968,73 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="v-prop-lbl">Engine & Chassis</span>
             <span class="v-prop-val mono">${escapeHtml(v.engineNumber || '')} / ${escapeHtml(v.chassisNumber || '')}</span>
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // --- TELEGRAM ID LOOKUP CARD GENERATOR ---
+  function buildTgUserCard(data) {
+    if (!data || typeof data !== 'object') return '';
+    const p = data.profile || (data.telegramId && data.linkedPhone ? data : null);
+    if (!p) return '';
+
+    return `
+      <div class="vehicle-info-card" style="border-left-color: #0088cc;">
+        <div class="vehicle-card-header">
+          <div class="vehicle-plate-pill" style="background: rgba(0, 136, 204, 0.15); color: #0088cc; border-color: rgba(0, 136, 204, 0.4);">
+            ✈️ TG: ${escapeHtml(p.telegramId || 'USER')}
+          </div>
+          <div class="vehicle-title-col">
+            <div class="vehicle-card-title">${escapeHtml(p.name || 'Telegram User')}</div>
+            <div class="vehicle-card-sub">@${escapeHtml((p.username || '').replace('@', ''))} &bull; ${escapeHtml(p.authMethod || 'Telegram 2FA')}</div>
+          </div>
+          <span class="vehicle-status-badge active" style="background: rgba(0, 136, 204, 0.2); color: #0088cc;">${escapeHtml(p.simStatus || 'RESOLVED')}</span>
+        </div>
+        <div class="vehicle-prop-grid">
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">📱 Linked Phone Number</span>
+            <span class="v-prop-val highlight" style="font-size: 1.1em; color: var(--accent); font-weight: 700;">${escapeHtml(p.linkedPhone || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Telecom Carrier</span>
+            <span class="v-prop-val">${escapeHtml(p.carrier || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Telecom Circle</span>
+            <span class="v-prop-val">${escapeHtml(p.circle || 'N/A')}</span>
+          </div>
+          <div class="vehicle-prop-item">
+            <span class="v-prop-lbl">Security / Encryption Status</span>
+            <span class="v-prop-val">${escapeHtml(p.encryptionStatus || 'Standard Profile')}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // --- ADMINISTRATIVE ENCRYPTION SHIELD CARD ---
+  function buildProtectedCard(data, result = {}) {
+    if (!data && !result) return '';
+    const isProtected = result?.isProtected || data?.code === 'ADMIN_ID_PROTECTED' || (result?.status === 403 && (data?.error || '').includes('protected'));
+    if (!isProtected) return '';
+
+    const msg = data?.message || data?.error || result?.error || 'Security encryption protocols strictly protect administrative owner identities from resolution.';
+
+    return `
+      <div class="vehicle-info-card" style="border-left-color: #ef4444; background: rgba(239, 68, 68, 0.08);">
+        <div class="vehicle-card-header">
+          <div class="vehicle-plate-pill" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border-color: rgba(239, 68, 68, 0.5);">
+            🔒 ENCRYPTED
+          </div>
+          <div class="vehicle-title-col">
+            <div class="vehicle-card-title" style="color: #ef4444;">⛔ Administrative Encryption Shield Active</div>
+            <div class="vehicle-card-sub" style="color: #fca5a5;">Protected Bot Administrator / Owner Identity</div>
+          </div>
+          <span class="vehicle-status-badge" style="background: rgba(239, 68, 68, 0.3); color: #ef4444; font-weight: 700;">BLOCKED</span>
+        </div>
+        <div style="padding: 12px 14px; font-size: 0.9em; color: var(--text); line-height: 1.5;">
+          ${escapeHtml(msg)}
         </div>
       </div>
     `;
@@ -1976,7 +2079,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.editingApiNameBadge.textContent = api.name;
     }
     if (elements.editingApiTypeBadge) {
-      elements.editingApiTypeBadge.textContent = api.inputType === 'vehicle' ? 'Vehicle RC API' : (api.inputType === 'number' ? 'Phone API' : 'Custom API');
+      elements.editingApiTypeBadge.textContent = api.inputType === 'vehicle' ? 'Vehicle RC API' : (api.inputType === 'tgid' ? 'Telegram ID to Number API' : (api.inputType === 'number' ? 'Phone API' : 'Custom API'));
     }
     if (elements.saveActiveApiBtnText) {
       elements.saveActiveApiBtnText.textContent = `Save Settings for ${api.name}`;
@@ -1988,6 +2091,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update input placeholder and counter depending on type
     if (api.inputType === 'vehicle') {
       elements.numberInput.placeholder = api.placeholder || 'Enter vehicle registration (e.g. DL01AB1234)...';
+      elements.numberInput.maxLength = 15;
+    } else if (api.inputType === 'tgid') {
+      elements.numberInput.placeholder = api.placeholder || 'Enter Telegram numerical User ID (e.g. 512345678)...';
       elements.numberInput.maxLength = 15;
     } else if (api.inputType === 'number') {
       elements.numberInput.placeholder = api.placeholder || 'Enter 10-digit number (e.g. 9876543210)...';
@@ -2018,6 +2124,12 @@ document.addEventListener('DOMContentLoaded', () => {
         { label: 'DL01AB1234 (Thar)', val: 'DL01AB1234' },
         { label: 'MH12DE1433 (Swift)', val: 'MH12DE1433' },
         { label: 'KA05MJ9901 (Creta)', val: 'KA05MJ9901' }
+      ];
+    } else if (api.inputType === 'tgid') {
+      sampleValues = [
+        { label: '512345678 (Demo User)', val: '512345678' },
+        { label: '689102341 (Demo 2)', val: '689102341' },
+        { label: '2051992452 (Owner ID - Protected)', val: '2051992452' }
       ];
     } else if (api.inputType === 'number') {
       sampleValues = [
@@ -2097,6 +2209,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (elements.newApiPlaceholder) elements.newApiPlaceholder.value = 'e.g. DL01AB1234';
       if (!elements.newApiUrl.value || elements.newApiUrl.value.includes('mock/phone')) {
         elements.newApiUrl.value = 'http://localhost:3000/api/mock/vehicle-lookup?rc={rc}';
+      }
+    } else if (type === 'tgid') {
+      if (elements.newApiIcon) elements.newApiIcon.value = '✈️';
+      if (elements.newApiParamName) elements.newApiParamName.value = 'tgid';
+      if (elements.newApiPlaceholder) elements.newApiPlaceholder.value = 'e.g. 512345678';
+      if (!elements.newApiUrl.value || elements.newApiUrl.value.includes('mock/')) {
+        elements.newApiUrl.value = '/api/mock/tg-id-lookup?tgid={query}';
       }
     } else if (type === 'number') {
       if (elements.newApiIcon) elements.newApiIcon.value = '📱';

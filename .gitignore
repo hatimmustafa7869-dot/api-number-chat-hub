@@ -9,3 +9,11 @@ npm-debug.log*
 .env
 .DS_Store
 Thumbs.db
+
+# Data & user persistence databases (survives git pulls & redeployments)
+data/
+*.db
+telegram_users.json
+admin_auth.json
+*.tmp*
+.apichat_backup/

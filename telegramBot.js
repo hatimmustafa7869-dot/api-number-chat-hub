@@ -257,11 +257,15 @@ Send any *10-digit number* (e.g. \`9876543210\`)
 🚗 *Vehicle RC & RTO Lookup:*
 Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)
 
+✈️ *Telegram ID to Number:*
+Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
+
 ⚙️ *Gateway Status:* 🟢 Multi-API Hub Online
 
 🛠️ *Available Commands:*
 • Send \`9876543210\` -> Phone Number Query
 • Send \`DL01AB1234\` -> Vehicle RC Query
+• Send \`/tg 512345678\` -> Telegram ID Query
 • \`/apis\` -> List all configured active APIs
 • \`/myid\` -> Check your user profile & quota
 • \`/status\` -> Check bot and service status
@@ -277,11 +281,11 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
       if (allApis.length > 0) {
         apiLines = allApis.map(a => `${a.icon || '🌐'} *${a.name}*\n• Type: \`${a.inputType}\` | Param: \`${a.paramName}\``).join('\n\n');
       } else {
-        apiLines = '📱 *Mobile Number Lookup*\n🚗 *Vehicle RC & RTO Lookup*';
+        apiLines = '📱 *Mobile Number Lookup*\n🚗 *Vehicle RC & RTO Lookup*\n✈️ *Telegram ID to Number*';
       }
       await this.sendMessage(
         chatId,
-        `🗂️ *Configured APIs Hub (${allApis.length || 2} Available):*\n\n${apiLines}\n\n💡 _You can query phone numbers and vehicle numbers simultaneously!_`
+        `🗂️ *Configured APIs Hub (${allApis.length || 3} Available):*\n\n${apiLines}\n\n💡 _You can query phone numbers, vehicle numbers, and Telegram IDs simultaneously!_`
       );
       return;
     }
@@ -294,6 +298,8 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
   Send any 10-digit number: \`9876543210\`
 • *Vehicle RC Lookup:*
   Send vehicle number: \`DL01AB1234\` or \`/vehicle DL01AB1234\`
+• *Telegram ID to Number:*
+  Send \`/tg <id>\` or \`/telegram <id>\`: \`/tg 512345678\`
 • *List All APIs:*
   \`/apis\`
 • *Check Profile & Quota:*
@@ -555,7 +561,90 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
       return;
     }
 
-    // 3. Check if the message is a 10-digit number
+    // 3. Check if message is a Telegram User ID Lookup
+    let tgUserId = null;
+    if (text.startsWith('/tg') || text.startsWith('/telegram') || text.startsWith('/id')) {
+      const parts = text.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      if (cmd === '/tg' || cmd === '/telegram' || cmd === '/id') {
+        tgUserId = (parts[1] || '').trim().replace(/\D/g, '');
+        if (!tgUserId) {
+          await this.sendMessage(chatId, `⚠️ *Usage:* \`/tg <Telegram_User_ID>\`\nExample: \`/tg 512345678\``);
+          return;
+        }
+      }
+    } else {
+      const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
+      if (activeApi && (activeApi.inputType === 'tgid' || activeApi.id === 'tg_id_lookup')) {
+        if (cleanNumber.length >= 5 && cleanNumber.length <= 15) {
+          tgUserId = cleanNumber;
+        }
+      }
+    }
+
+    if (tgUserId) {
+      const ownerId = this.authManager.ownerId || process.env.TELEGRAM_OWNER_ID || '2051992452';
+      
+      // 🔒 Security Encryption Shield: Protect Owner's Telegram ID from reverse lookup!
+      if (String(tgUserId).trim() === String(ownerId).trim()) {
+        await this.sendMessage(
+          chatId,
+          `🔒 *SECURITY ENCRYPTION SHIELD*\n\n⛔ *Access Denied:* The requested Telegram ID (\`${tgUserId}\`) belongs to the Bot Administrator / Owner and is protected under administrative encryption protocols.\n\nQuery cannot be fulfilled.`
+        );
+        return;
+      }
+
+      await this.sendMessage(chatId, `⏳ *Querying Telegram ID Registry for \`${tgUserId}\`...*`);
+      const startTime = Date.now();
+      try {
+        const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
+        const tgApi = (activeApi && (activeApi.inputType === 'tgid' || activeApi.id === 'tg_id_lookup'))
+          ? activeApi
+          : (this.apiStore ? (this.apiStore.getById('tg_id_lookup') || activeApi) : null);
+        
+        const targetUrl = tgApi ? tgApi.url : '/api/mock/tg-id-lookup';
+        const paramName = tgApi ? tgApi.paramName : 'tgid';
+        let headers = {};
+        if (tgApi?.authHeader) {
+          headers['Authorization'] = tgApi.authHeader;
+        }
+        if (tgApi?.customHeaders) {
+          try {
+            const parsed = typeof tgApi.customHeaders === 'object' ? tgApi.customHeaders : JSON.parse(tgApi.customHeaders);
+            headers = { ...headers, ...parsed };
+          } catch {}
+        }
+
+        const result = await this.queryExecutor({
+          url: targetUrl,
+          paramName,
+          query: tgUserId,
+          method: tgApi?.method || 'GET',
+          headers
+        });
+
+        const latencyMs = result.latencyMs || (Date.now() - startTime);
+        this.stats.telegramQueriesCount++;
+        const quota = this.authManager.consumeQuota(chatId);
+
+        this.broadcastEvent('telegram_query', {
+          user: fromUser,
+          number: tgUserId,
+          type: 'tgid',
+          targetUrl: result.targetUrl || targetUrl,
+          result
+        });
+
+        const formattedMsg = this.formatTelegramResponse(tgUserId, result, latencyMs, quota, auth.isOwner);
+        await this.sendMessage(chatId, formattedMsg);
+      } catch (err) {
+        const safeError = (err.message || 'Service unavailable').replace(/https?:\/\/[^\s]+/gi, '[Secure Gateway]');
+        await this.sendMessage(chatId, `❌ *Telegram ID Query Failed*\nError: ${safeError}\nPlease verify the User ID.`);
+      }
+      return;
+    }
+
+    // 4. Check if the message is a 10-digit number
     if (cleanNumber.length === 10) {
       await this.sendMessage(chatId, `⏳ *Querying secure gateway for \`${cleanNumber}\`...*`);
 
@@ -622,7 +711,7 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
     // If text is not 10 digits and not a vehicle and not a command
     await this.sendMessage(
       chatId,
-      `⚠️ *Unrecognized Input Format*\n\n• For *Phone Lookup*, send any *10-digit number* (e.g. \`9876543210\`)\n• For *Vehicle RC Lookup*, send registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)\n• Type \`/apis\` to see all active APIs`
+      `⚠️ *Unrecognized Input Format*\n\n• For *Phone Lookup*, send any *10-digit number* (e.g. \`9876543210\`)\n• For *Vehicle RC Lookup*, send registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)\n• For *Telegram ID Lookup*, send \`/tg <id>\` (e.g. \`/tg 512345678\`)\n• Type \`/apis\` to see all active APIs`
     );
     } catch (err) {
       console.error(`Error handling Telegram message from ${chatId}:`, err);
@@ -690,6 +779,25 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
 • *Spam Score:* ${data.data.spamAssessment?.score || 'Clean'}
 • *Status:* ${data.data.accountStatus}`;
       } 
+      // Check for Telegram ID to Phone Record
+      else if (data.profile && (data.profile.linkedPhone || data.profile.telegramId)) {
+        const p = data.profile;
+        highlights = 
+`✈️ *Telegram User ID Lookup Record:*
+• *Telegram ID:* \`${p.telegramId || number}\`
+• *Username:* ${p.username ? '@' + p.username.replace('@', '') : 'N/A'}
+• *Name:* ${p.name || 'Verified User'}
+• *📱 Linked Phone:* *${p.linkedPhone || 'N/A'}*
+• *Carrier:* ${p.carrier || 'N/A'}
+• *Circle:* ${p.circle || 'N/A'}
+• *Security Status:* 🟢 ${p.encryptionStatus || 'Standard Profile'}`;
+      }
+      // Check for Owner ID Encryption Shield
+      else if (data.code === 'ADMIN_ID_PROTECTED' || result.isProtected) {
+        highlights = 
+`🔒 *SECURITY ENCRYPTION SHIELD*
+⛔ Protected Administrative Entity. Resolution is prohibited.`;
+      }
       // Check for Student Mock
       else if (data.profile && data.profile.fullName) {
         highlights = 

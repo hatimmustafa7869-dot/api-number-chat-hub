@@ -30,6 +30,19 @@
       "updatedAt": "2026-10-04T20:28:49.408Z"
     },
     {
+      "id": "tg_id_lookup",
+      "name": "Telegram ID to Number",
+      "description": "Resolve Telegram numerical user ID to registered phone number",
+      "url": "/api/mock/tg-id-lookup",
+      "paramName": "tgid",
+      "method": "GET",
+      "inputType": "tgid",
+      "placeholder": "Enter Telegram user ID (e.g. 123456789)...",
+      "icon": "✈️",
+      "isBuiltin": true,
+      "createdAt": "2026-10-04T20:30:00.000Z"
+    },
+    {
       "id": "student_registry",
       "name": "University Student Registry",
       "description": "College enrollment, CGPA, and branch lookup",
