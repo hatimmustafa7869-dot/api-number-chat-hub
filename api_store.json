@@ -12,7 +12,8 @@
       "placeholder": "Enter 10-digit mobile number (e.g. 9876543210)...",
       "icon": "📱",
       "isBuiltin": true,
-      "createdAt": "2026-10-02T21:00:29.804Z"
+      "createdAt": "2026-10-02T21:00:29.804Z",
+      "updatedAt": "2026-10-04T18:59:05.609Z"
     },
     {
       "id": "vehicle_lookup",
@@ -25,7 +26,8 @@
       "placeholder": "Enter Vehicle RC Number (e.g. DL01AB1234, MH12DE1433)...",
       "icon": "🚗",
       "isBuiltin": true,
-      "createdAt": "2026-10-02T21:00:29.806Z"
+      "createdAt": "2026-10-02T21:00:29.806Z",
+      "updatedAt": "2026-10-04T18:59:05.609Z"
     },
     {
       "id": "student_registry",
@@ -54,5 +56,5 @@
       "createdAt": "2026-10-02T21:00:29.806Z"
     }
   ],
-  "updatedAt": "2026-10-02T21:08:05.287Z"
+  "updatedAt": "2026-10-04T18:59:05.609Z"
 }

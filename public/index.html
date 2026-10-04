@@ -116,6 +116,18 @@
             <button type="button" id="unlockQuickBtn" class="btn btn-unlock-sm">Unlock</button>
           </div>
 
+          <!-- Active API Editing Context Card -->
+          <div class="active-api-editing-banner" id="activeApiEditingBanner">
+            <div class="editing-banner-top">
+              <span class="editing-icon" id="editingApiIcon">📱</span>
+              <div class="editing-details">
+                <small>Configuring Endpoint:</small>
+                <strong id="editingApiNameBadge">Mobile Number Lookup</strong>
+              </div>
+            </div>
+            <span class="badge-tab-type" id="editingApiTypeBadge">Phone API</span>
+          </div>
+
           <!-- Preset selector -->
           <div class="form-group">
             <label for="apiPresetSelect" class="form-label">
@@ -226,6 +238,15 @@
 
             </div>
           </details>
+
+          <!-- Save Active API Settings Action -->
+          <div class="sidebar-save-action">
+            <button type="button" id="saveActiveApiBtn" class="btn btn-primary btn-save-active-api">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span id="saveActiveApiBtnText">Save Settings for Mobile Lookup</span>
+            </button>
+            <div id="saveActiveApiStatus" class="save-status-indicator"></div>
+          </div>
 
           <!-- Quick Test Numbers -->
           <div class="quick-samples-card">

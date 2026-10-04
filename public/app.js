@@ -111,6 +111,15 @@ document.addEventListener('DOMContentLoaded', () => {
     apiFormError: document.getElementById('apiFormError'),
     saveApiBtn: document.getElementById('saveApiBtn'),
 
+    // Active API Sidebar Editing & Save Controls
+    activeApiEditingBanner: document.getElementById('activeApiEditingBanner'),
+    editingApiIcon: document.getElementById('editingApiIcon'),
+    editingApiNameBadge: document.getElementById('editingApiNameBadge'),
+    editingApiTypeBadge: document.getElementById('editingApiTypeBadge'),
+    saveActiveApiBtn: document.getElementById('saveActiveApiBtn'),
+    saveActiveApiBtnText: document.getElementById('saveActiveApiBtnText'),
+    saveActiveApiStatus: document.getElementById('saveActiveApiStatus'),
+
     // Form & Input Bar
     queryForm: document.getElementById('queryForm'),
     numberInput: document.getElementById('numberInput'),
@@ -402,6 +411,9 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.apiUrlInput.placeholder = preset.placeholder;
       elements.currentEndpointBadge.textContent = `Active Endpoint: ${preset.name}`;
       updateRequestPreview();
+      if (typeof handleSidebarConfigChange === 'function') {
+        handleSidebarConfigChange();
+      }
     }
   });
 
@@ -410,28 +422,62 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPost = ['POST', 'PUT', 'PATCH'].includes(e.target.value);
     elements.postBodyGroup.style.display = isPost ? 'block' : 'none';
     updateRequestPreview();
+    if (typeof handleSidebarConfigChange === 'function') {
+      handleSidebarConfigChange();
+    }
   });
 
   // --- UPDATE REQUEST PREVIEW CODE BLOCK ---
   function updateRequestPreview() {
-    const method = elements.httpMethodSelect.value;
-    const url = elements.apiUrlInput.value.trim() || '/api/mock/telecom-lookup';
-    const param = elements.queryParamInput.value.trim() || 'number';
-    const num = elements.numberInput.value.trim() || '9876543210';
+    const method = elements.httpMethodSelect ? elements.httpMethodSelect.value : 'GET';
+    const url = (elements.apiUrlInput ? elements.apiUrlInput.value.trim() : '') || '/api/mock/telecom-lookup';
+    const param = (elements.queryParamInput ? elements.queryParamInput.value.trim() : '') || 'number';
+    const num = (elements.numberInput ? elements.numberInput.value.trim() : '') || '9876543210';
 
     let displayUrl = url;
     if (displayUrl.includes('{number}')) {
       displayUrl = displayUrl.replace('{number}', num);
+    } else if (displayUrl.includes('{rc}')) {
+      displayUrl = displayUrl.replace('{rc}', num);
+    } else if (displayUrl.includes('{query}')) {
+      displayUrl = displayUrl.replace('{query}', num);
     } else if (method === 'GET') {
       const sep = displayUrl.includes('?') ? '&' : '?';
       displayUrl = `${displayUrl}${sep}${param}=${num}`;
     }
 
-    elements.requestUrlPreview.textContent = `${method} ${displayUrl}`;
+    if (elements.requestUrlPreview) {
+      elements.requestUrlPreview.textContent = `${method} ${displayUrl}`;
+    }
   }
 
-  elements.apiUrlInput.addEventListener('input', updateRequestPreview);
-  elements.queryParamInput.addEventListener('input', updateRequestPreview);
+  elements.apiUrlInput?.addEventListener('input', () => {
+    updateRequestPreview();
+    if (typeof handleSidebarConfigChange === 'function') {
+      handleSidebarConfigChange();
+    }
+  });
+  elements.queryParamInput?.addEventListener('input', () => {
+    updateRequestPreview();
+    if (typeof handleSidebarConfigChange === 'function') {
+      handleSidebarConfigChange();
+    }
+  });
+  elements.authHeaderInput?.addEventListener('input', () => {
+    if (typeof handleSidebarConfigChange === 'function') {
+      handleSidebarConfigChange();
+    }
+  });
+  elements.customHeadersInput?.addEventListener('input', () => {
+    if (typeof handleSidebarConfigChange === 'function') {
+      handleSidebarConfigChange();
+    }
+  });
+  elements.postBodyTypeSelect?.addEventListener('change', () => {
+    if (typeof handleSidebarConfigChange === 'function') {
+      handleSidebarConfigChange();
+    }
+  });
 
   // --- INPUT SANITIZATION & COUNTER (Multi-API Aware) ---
   elements.numberInput.addEventListener('input', (e) => {
@@ -1594,17 +1640,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (saved) {
         const config = JSON.parse(saved);
         if (config.isLocked) {
-          if (config.apiUrl) elements.apiUrlInput.value = config.apiUrl;
-          if (config.paramName) elements.queryParamInput.value = config.paramName;
-          if (config.method) elements.httpMethodSelect.value = config.method;
-          if (config.preset) elements.apiPresetSelect.value = config.preset;
-          if (config.proxy !== undefined) elements.proxyToggle.checked = config.proxy;
-          if (config.auth) elements.authHeaderInput.value = config.auth;
-          if (config.headers) elements.customHeadersInput.value = config.headers;
-          if (config.postBodyType) elements.postBodyTypeSelect.value = config.postBodyType;
-
           setApiLockState(true, false);
-          updateRequestPreview();
         }
       }
     } catch (e) {
@@ -1684,7 +1720,126 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function selectActiveApi(id) {
+  let autoSaveTimeout = null;
+
+  async function saveSidebarToActiveApi(targetId = state.activeApiId, showFeedback = false) {
+    if (!targetId || !state.apis) return;
+    const api = state.apis.find(a => a.id === targetId);
+    if (!api) return;
+
+    const currentUrl = elements.apiUrlInput.value.trim();
+    const currentParam = elements.queryParamInput.value.trim() || (api.inputType === 'vehicle' ? 'rc' : 'number');
+    const currentMethod = elements.httpMethodSelect.value;
+    const currentAuth = elements.authHeaderInput ? elements.authHeaderInput.value.trim() : '';
+    const currentHeaders = elements.customHeadersInput ? elements.customHeadersInput.value.trim() : '';
+    const currentBodyType = elements.postBodyTypeSelect ? elements.postBodyTypeSelect.value : 'json';
+
+    // Immediately update in-memory object
+    api.url = currentUrl;
+    api.paramName = currentParam;
+    api.method = currentMethod;
+    api.authHeader = currentAuth;
+    api.customHeaders = currentHeaders;
+    api.bodyType = currentBodyType;
+
+    if (showFeedback && elements.saveActiveApiStatus) {
+      elements.saveActiveApiStatus.textContent = 'Saving...';
+      elements.saveActiveApiStatus.className = 'save-status-indicator saving';
+    }
+
+    try {
+      const res = await authFetch(`/api/endpoints/${encodeURIComponent(targetId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: currentUrl,
+          paramName: currentParam,
+          method: currentMethod,
+          authHeader: currentAuth,
+          customHeaders: currentHeaders,
+          bodyType: currentBodyType
+        })
+      });
+
+      const data = await res.json();
+      if (data.ok && data.data) {
+        Object.assign(api, data.data);
+        if (showFeedback && elements.saveActiveApiStatus) {
+          elements.saveActiveApiStatus.textContent = `✓ Stored for ${api.name}`;
+          elements.saveActiveApiStatus.className = 'save-status-indicator saved';
+          setTimeout(() => {
+            if (elements.saveActiveApiStatus) elements.saveActiveApiStatus.textContent = '';
+          }, 3500);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to save API settings:', err);
+      if (showFeedback && elements.saveActiveApiStatus) {
+        elements.saveActiveApiStatus.textContent = '⚠️ Could not save to server';
+        elements.saveActiveApiStatus.className = 'save-status-indicator error';
+      }
+    }
+  }
+
+  function handleSidebarConfigChange() {
+    if (!state.activeApiId || !state.apis) return;
+    const api = state.apis.find(a => a.id === state.activeApiId);
+    if (!api) return;
+
+    // Immediately update in-memory object
+    api.url = elements.apiUrlInput.value.trim();
+    api.paramName = elements.queryParamInput.value.trim() || (api.inputType === 'vehicle' ? 'rc' : 'number');
+    api.method = elements.httpMethodSelect.value;
+    if (elements.authHeaderInput) api.authHeader = elements.authHeaderInput.value.trim();
+    if (elements.customHeadersInput) api.customHeaders = elements.customHeadersInput.value.trim();
+    if (elements.postBodyTypeSelect) api.bodyType = elements.postBodyTypeSelect.value;
+
+    updateRequestPreview();
+
+    if (elements.saveActiveApiStatus) {
+      elements.saveActiveApiStatus.textContent = '● Saving...';
+      elements.saveActiveApiStatus.className = 'save-status-indicator saving';
+    }
+
+    clearTimeout(autoSaveTimeout);
+    autoSaveTimeout = setTimeout(() => {
+      saveSidebarToActiveApi(state.activeApiId, true);
+    }, 600);
+  }
+
+  async function selectActiveApi(id) {
+    if (!id) return;
+    const previousApiId = state.activeApiId;
+
+    // STEP 1: Save previous active tab's sidebar config before switching!
+    if (previousApiId && previousApiId !== id) {
+      clearTimeout(autoSaveTimeout);
+      const prevApi = (state.apis || []).find(a => a.id === previousApiId);
+      if (prevApi) {
+        prevApi.url = elements.apiUrlInput.value.trim();
+        prevApi.paramName = elements.queryParamInput.value.trim() || (prevApi.inputType === 'vehicle' ? 'rc' : 'number');
+        prevApi.method = elements.httpMethodSelect.value;
+        if (elements.authHeaderInput) prevApi.authHeader = elements.authHeaderInput.value.trim();
+        if (elements.customHeadersInput) prevApi.customHeaders = elements.customHeadersInput.value.trim();
+        if (elements.postBodyTypeSelect) prevApi.bodyType = elements.postBodyTypeSelect.value;
+
+        // Persist previous API settings to backend
+        authFetch(`/api/endpoints/${encodeURIComponent(previousApiId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: prevApi.url,
+            paramName: prevApi.paramName,
+            method: prevApi.method,
+            authHeader: prevApi.authHeader,
+            customHeaders: prevApi.customHeaders,
+            bodyType: prevApi.bodyType
+          })
+        }).catch((err) => console.error('Error saving previous tab API:', err));
+      }
+    }
+
+    // STEP 2: Switch to new active API
     state.activeApiId = id;
     renderApiTabs();
     const activeApi = (state.apis || []).find(a => a.id === id);
@@ -1711,10 +1866,30 @@ document.addEventListener('DOMContentLoaded', () => {
         ? (typeof api.customHeaders === 'string' ? api.customHeaders : JSON.stringify(api.customHeaders, null, 2))
         : '';
     }
+    if (elements.postBodyTypeSelect) {
+      elements.postBodyTypeSelect.value = api.bodyType || 'json';
+    }
 
-    // Update endpoint badge
+    // Update endpoint badge in chat
     if (elements.currentEndpointBadge) {
       elements.currentEndpointBadge.textContent = `${api.icon || '⚡'} ${api.name}`;
+    }
+
+    // Update sidebar editing banner & save button
+    if (elements.editingApiIcon) {
+      elements.editingApiIcon.textContent = api.icon || '⚡';
+    }
+    if (elements.editingApiNameBadge) {
+      elements.editingApiNameBadge.textContent = api.name;
+    }
+    if (elements.editingApiTypeBadge) {
+      elements.editingApiTypeBadge.textContent = api.inputType === 'vehicle' ? 'Vehicle RC API' : (api.inputType === 'number' ? 'Phone API' : 'Custom API');
+    }
+    if (elements.saveActiveApiBtnText) {
+      elements.saveActiveApiBtnText.textContent = `Save Settings for ${api.name}`;
+    }
+    if (elements.saveActiveApiStatus) {
+      elements.saveActiveApiStatus.textContent = '';
     }
 
     // Update input placeholder and counter depending on type
@@ -1737,6 +1912,11 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.numberInput.dispatchEvent(new Event('input'));
     updateRequestPreview();
   }
+
+  elements.saveActiveApiBtn?.addEventListener('click', async () => {
+    clearTimeout(autoSaveTimeout);
+    await saveSidebarToActiveApi(state.activeApiId, true);
+  });
 
   function updateSampleChipsForApi(api) {
     const chipsWrapper = document.querySelector('.sample-chips');

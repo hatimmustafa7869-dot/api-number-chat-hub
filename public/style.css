@@ -2217,3 +2217,103 @@ body.light-theme .login-overlay {
   color: var(--text-main);
   font-weight: 600;
 }
+
+/* Active API Configuration Banner in Sidebar */
+.active-api-editing-banner {
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.editing-banner-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.editing-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.editing-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editing-details small {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.editing-details strong {
+  font-size: 13px;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.badge-tab-type {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent);
+  border-radius: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Sidebar Save Action */
+.sidebar-save-action {
+  margin: 14px 0 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn-save-active-api {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.save-status-indicator {
+  font-size: 11px;
+  text-align: center;
+  min-height: 16px;
+  transition: all var(--transition-fast);
+}
+
+.save-status-indicator.saving {
+  color: var(--warning);
+}
+
+.save-status-indicator.saved {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.save-status-indicator.error {
+  color: var(--error);
+  font-weight: 600;
+}

@@ -503,12 +503,23 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
         const vehicleApi = this.apiStore ? this.apiStore.getById('vehicle_lookup') : null;
         const targetUrl = vehicleApi ? vehicleApi.url : '/api/mock/vehicle-lookup';
         const paramName = vehicleApi ? vehicleApi.paramName : 'rc';
+        let headers = {};
+        if (vehicleApi?.authHeader) {
+          headers['Authorization'] = vehicleApi.authHeader;
+        }
+        if (vehicleApi?.customHeaders) {
+          try {
+            const parsed = typeof vehicleApi.customHeaders === 'object' ? vehicleApi.customHeaders : JSON.parse(vehicleApi.customHeaders);
+            headers = { ...headers, ...parsed };
+          } catch {}
+        }
 
         const result = await this.queryExecutor({
           url: targetUrl,
           paramName,
           query: vehicleNum,
-          method: 'GET'
+          method: vehicleApi?.method || 'GET',
+          headers
         });
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
@@ -542,12 +553,24 @@ Send vehicle registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`
         const phoneApi = this.apiStore ? (this.apiStore.getById('phone_lookup') || this.apiStore.getActiveApi()) : null;
         const targetUrl = phoneApi ? phoneApi.url : this.activeApiUrl;
         const paramName = phoneApi ? phoneApi.paramName : this.activeParamName;
+        let headers = {};
+        if (phoneApi?.authHeader) {
+          headers['Authorization'] = phoneApi.authHeader;
+        }
+        if (phoneApi?.customHeaders) {
+          try {
+            const parsed = typeof phoneApi.customHeaders === 'object' ? phoneApi.customHeaders : JSON.parse(phoneApi.customHeaders);
+            headers = { ...headers, ...parsed };
+          } catch {}
+        }
 
         const result = await this.queryExecutor({
           url: targetUrl,
           paramName,
           number: cleanNumber,
-          method: 'GET'
+          query: cleanNumber,
+          method: phoneApi?.method || 'GET',
+          headers
         });
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
