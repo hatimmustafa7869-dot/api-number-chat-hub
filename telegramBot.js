@@ -149,6 +149,122 @@ class TelegramBotService {
     };
   }
 
+  // Helper: Retrieve Mobile Number Lookup API configuration
+  getPhoneApi() {
+    const phoneById = this.apiStore ? this.apiStore.getById('phone_lookup') : null;
+    const active = this.apiStore ? this.apiStore.getActiveApi() : null;
+
+    // Use activeApi only if it is explicitly a number-type API and not vehicle or tgid
+    let selected = (active && active.inputType === 'number' && active.id !== 'tg_id_lookup' && active.id !== 'vehicle_lookup')
+      ? active
+      : phoneById;
+
+    if (!selected && this.apiStore) {
+      selected = this.apiStore.getAll().apis.find(a => a.inputType === 'number' && a.id !== 'tg_id_lookup' && a.id !== 'vehicle_lookup');
+    }
+
+    let url = selected?.url || '/api/mock/telecom-lookup';
+    let paramName = selected?.paramName || 'number';
+    let method = (selected?.method || 'GET').toUpperCase();
+    let headers = {};
+
+    // Allow activeApiUrl only if set by telegram /api command AND not a tgid/vehicle URL
+    if (this.activeApiUrl && !this.activeApiUrl.includes('tg') && !this.activeApiUrl.includes('vehicle') && !this.activeApiUrl.includes('rc')) {
+      if ((!url || url.includes('/api/mock/')) && !this.activeApiUrl.includes('/api/mock/')) {
+        url = this.activeApiUrl;
+      }
+    }
+
+    if (selected?.authHeader) {
+      headers['Authorization'] = selected.authHeader;
+    }
+    if (selected?.customHeaders) {
+      try {
+        const parsed = typeof selected.customHeaders === 'object' ? selected.customHeaders : JSON.parse(selected.customHeaders);
+        headers = { ...headers, ...parsed };
+      } catch {}
+    }
+
+    return {
+      id: selected?.id || 'phone_lookup',
+      name: selected?.name || 'Mobile Number Lookup',
+      url,
+      paramName,
+      method,
+      headers
+    };
+  }
+
+  // Helper: Retrieve Vehicle RC Lookup API configuration
+  getVehicleApi() {
+    const vehicleById = this.apiStore ? this.apiStore.getById('vehicle_lookup') : null;
+    const active = this.apiStore ? this.apiStore.getActiveApi() : null;
+
+    let selected = (active && active.inputType === 'vehicle') ? active : vehicleById;
+    if (!selected && this.apiStore) {
+      selected = this.apiStore.getAll().apis.find(a => a.inputType === 'vehicle');
+    }
+
+    let url = selected?.url || '/api/mock/vehicle-lookup';
+    let paramName = selected?.paramName || 'rc';
+    let method = (selected?.method || 'GET').toUpperCase();
+    let headers = {};
+
+    if (selected?.authHeader) {
+      headers['Authorization'] = selected.authHeader;
+    }
+    if (selected?.customHeaders) {
+      try {
+        const parsed = typeof selected.customHeaders === 'object' ? selected.customHeaders : JSON.parse(selected.customHeaders);
+        headers = { ...headers, ...parsed };
+      } catch {}
+    }
+
+    return {
+      id: selected?.id || 'vehicle_lookup',
+      name: selected?.name || 'Vehicle RC & RTO Lookup',
+      url,
+      paramName,
+      method,
+      headers
+    };
+  }
+
+  // Helper: Retrieve Telegram ID to Number API configuration
+  getTgIdApi() {
+    const tgById = this.apiStore ? this.apiStore.getById('tg_id_lookup') : null;
+    const active = this.apiStore ? this.apiStore.getActiveApi() : null;
+
+    let selected = (active && (active.inputType === 'tgid' || active.id === 'tg_id_lookup')) ? active : tgById;
+    if (!selected && this.apiStore) {
+      selected = this.apiStore.getAll().apis.find(a => a.inputType === 'tgid' || a.id === 'tg_id_lookup');
+    }
+
+    let url = selected?.url || '/api/mock/tg-id-lookup';
+    let paramName = selected?.paramName || 'tgid';
+    let method = (selected?.method || 'GET').toUpperCase();
+    let headers = {};
+
+    if (selected?.authHeader) {
+      headers['Authorization'] = selected.authHeader;
+    }
+    if (selected?.customHeaders) {
+      try {
+        const parsed = typeof selected.customHeaders === 'object' ? selected.customHeaders : JSON.parse(selected.customHeaders);
+        headers = { ...headers, ...parsed };
+      } catch {}
+    }
+
+    return {
+      id: selected?.id || 'tg_id_lookup',
+      name: selected?.name || 'Telegram ID to Number',
+      url,
+      paramName,
+      method,
+      headers
+    };
+  }
+
   // Get current Bot Status
   getStatus() {
     return {
@@ -654,52 +770,67 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
       return;
     }
 
-    // Extract numeric digits (handle prefixes like +91 or 0)
-    let cleanNumber = text.replace(/\D/g, '');
+    // 1. Check if user explicitly called a Phone Lookup command:
+    let isExplicitPhoneCmd = false;
+    let explicitPhoneQuery = null;
+    if (text.startsWith('/phone') || text.startsWith('/num') || text.startsWith('/mobile') || text.startsWith('/number')) {
+      isExplicitPhoneCmd = true;
+      const parts = text.split(/\s+/);
+      explicitPhoneQuery = (parts[1] || '').trim();
+    }
+
+    // 2. Check if user explicitly called a Telegram ID Lookup command:
+    let isExplicitTgCmd = false;
+    let explicitTgId = null;
+    if (text.startsWith('/tg') || text.startsWith('/telegram') || text.startsWith('/tgid') || text.startsWith('/id')) {
+      const parts = text.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      if (cmd === '/tg' || cmd === '/telegram' || cmd === '/tgid' || cmd === '/id') {
+        isExplicitTgCmd = true;
+        explicitTgId = (parts[1] || '').trim().replace(/\D/g, '');
+        if (!explicitTgId) {
+          await this.sendMessage(chatId, `⚠️ *Usage:* \`/tg <Telegram_User_ID>\`\nExample: \`/tg 512345678\``);
+          return;
+        }
+      }
+    }
+
+    // 3. Check if user explicitly called a Vehicle command:
+    let vehicleNum = null;
+    if (text.startsWith('/vehicle') || text.startsWith('/rc')) {
+      vehicleNum = text.replace(/^\/(vehicle|rc)\s*/i, '').trim().toUpperCase().replace(/[\s-]/g, '');
+    }
+
+    // Extract numeric digits (handle international/domestic prefixes like +91 or leading 0)
+    let cleanNumber = (explicitPhoneQuery || text).replace(/\D/g, '');
     if (cleanNumber.length === 12 && cleanNumber.startsWith('91')) {
       cleanNumber = cleanNumber.slice(2);
     } else if (cleanNumber.length === 11 && cleanNumber.startsWith('0')) {
       cleanNumber = cleanNumber.slice(1);
     }
 
-    // 2. Check if message is a Vehicle Lookup
-    let vehicleNum = null;
-    if (text.startsWith('/vehicle') || text.startsWith('/rc')) {
-      vehicleNum = text.replace(/^\/(vehicle|rc)\s*/i, '').trim().toUpperCase().replace(/[\s-]/g, '');
-    } else if (cleanNumber.length !== 10) {
+    // Check Vehicle RC pattern if not 10 digits and not explicit commands
+    if (!vehicleNum && cleanNumber.length !== 10 && !isExplicitTgCmd && !isExplicitPhoneCmd) {
       const stripped = text.trim().toUpperCase().replace(/[\s-]/g, '');
       if (/^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{4}$/i.test(stripped)) {
         vehicleNum = stripped;
       }
     }
 
+    // ==========================================
+    // ROUTE 1: VEHICLE RC & RTO LOOKUP
+    // ==========================================
     if (vehicleNum) {
       await this.sendMessage(chatId, `⏳ *Querying Vehicle RTO Registry for \`${vehicleNum}\`...*`);
       const startTime = Date.now();
       try {
-        const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
-        const vehicleApi = (activeApi && activeApi.inputType === 'vehicle')
-          ? activeApi
-          : (this.apiStore ? (this.apiStore.getById('vehicle_lookup') || activeApi) : null);
-        const targetUrl = vehicleApi ? vehicleApi.url : '/api/mock/vehicle-lookup';
-        const paramName = vehicleApi ? vehicleApi.paramName : 'rc';
-        let headers = {};
-        if (vehicleApi?.authHeader) {
-          headers['Authorization'] = vehicleApi.authHeader;
-        }
-        if (vehicleApi?.customHeaders) {
-          try {
-            const parsed = typeof vehicleApi.customHeaders === 'object' ? vehicleApi.customHeaders : JSON.parse(vehicleApi.customHeaders);
-            headers = { ...headers, ...parsed };
-          } catch {}
-        }
-
+        const vehicleApi = this.getVehicleApi();
         const result = await this.queryExecutor({
-          url: targetUrl,
-          paramName,
+          url: vehicleApi.url,
+          paramName: vehicleApi.paramName,
           query: vehicleNum,
-          method: vehicleApi?.method || 'GET',
-          headers
+          method: vehicleApi.method,
+          headers: vehicleApi.headers
         });
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
@@ -717,7 +848,7 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
           user: fromUser,
           number: vehicleNum,
           type: 'vehicle',
-          targetUrl: result.targetUrl || targetUrl,
+          targetUrl: result.targetUrl || vehicleApi.url,
           result
         });
 
@@ -730,66 +861,31 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
       return;
     }
 
-    // 3. Check if message is a Telegram User ID Lookup
-    let tgUserId = null;
-    if (text.startsWith('/tg') || text.startsWith('/telegram') || text.startsWith('/id')) {
-      const parts = text.split(/\s+/);
-      const cmd = parts[0].toLowerCase();
-      if (cmd === '/tg' || cmd === '/telegram' || cmd === '/id') {
-        tgUserId = (parts[1] || '').trim().replace(/\D/g, '');
-        if (!tgUserId) {
-          await this.sendMessage(chatId, `⚠️ *Usage:* \`/tg <Telegram_User_ID>\`\nExample: \`/tg 512345678\``);
-          return;
-        }
-      }
-    } else {
-      const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
-      if (activeApi && (activeApi.inputType === 'tgid' || activeApi.id === 'tg_id_lookup')) {
-        if (cleanNumber.length >= 5 && cleanNumber.length <= 15) {
-          tgUserId = cleanNumber;
-        }
-      }
-    }
-
-    if (tgUserId) {
+    // ==========================================
+    // ROUTE 2: EXPLICIT TELEGRAM ID LOOKUP (/tg, /telegram, /tgid, /id)
+    // ==========================================
+    if (isExplicitTgCmd && explicitTgId) {
       const ownerId = this.authManager.ownerId || process.env.TELEGRAM_OWNER_ID || '2051992452';
       
       // 🔒 Security Encryption Shield: Protect Owner's Telegram ID from reverse lookup!
-      if (String(tgUserId).trim() === String(ownerId).trim()) {
+      if (String(explicitTgId).trim() === String(ownerId).trim()) {
         await this.sendMessage(
           chatId,
-          `🔒 *SECURITY ENCRYPTION SHIELD*\n\n⛔ *Access Denied:* The requested Telegram ID (\`${tgUserId}\`) belongs to the Bot Administrator / Owner and is protected under administrative encryption protocols.\n\nQuery cannot be fulfilled.`
+          `🔒 *SECURITY ENCRYPTION SHIELD*\n\n⛔ *Access Denied:* The requested Telegram ID (\`${explicitTgId}\`) belongs to the Bot Administrator / Owner and is protected under administrative encryption protocols.\n\nQuery cannot be fulfilled.`
         );
         return;
       }
 
-      await this.sendMessage(chatId, `⏳ *Querying Telegram ID Registry for \`${tgUserId}\`...*`);
+      await this.sendMessage(chatId, `⏳ *Querying Telegram ID Registry for \`${explicitTgId}\`...*`);
       const startTime = Date.now();
       try {
-        const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
-        const tgApi = (activeApi && (activeApi.inputType === 'tgid' || activeApi.id === 'tg_id_lookup'))
-          ? activeApi
-          : (this.apiStore ? (this.apiStore.getById('tg_id_lookup') || activeApi) : null);
-        
-        const targetUrl = tgApi ? tgApi.url : '/api/mock/tg-id-lookup';
-        const paramName = tgApi ? tgApi.paramName : 'tgid';
-        let headers = {};
-        if (tgApi?.authHeader) {
-          headers['Authorization'] = tgApi.authHeader;
-        }
-        if (tgApi?.customHeaders) {
-          try {
-            const parsed = typeof tgApi.customHeaders === 'object' ? tgApi.customHeaders : JSON.parse(tgApi.customHeaders);
-            headers = { ...headers, ...parsed };
-          } catch {}
-        }
-
+        const tgApi = this.getTgIdApi();
         const result = await this.queryExecutor({
-          url: targetUrl,
-          paramName,
-          query: tgUserId,
-          method: tgApi?.method || 'GET',
-          headers
+          url: tgApi.url,
+          paramName: tgApi.paramName,
+          query: explicitTgId,
+          method: tgApi.method,
+          headers: tgApi.headers
         });
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
@@ -805,13 +901,13 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
 
         this.broadcastEvent('telegram_query', {
           user: fromUser,
-          number: tgUserId,
+          number: explicitTgId,
           type: 'tgid',
-          targetUrl: result.targetUrl || targetUrl,
+          targetUrl: result.targetUrl || tgApi.url,
           result
         });
 
-        const formattedMsg = this.formatTelegramResponse(tgUserId, result, latencyMs, quota, auth.isOwner);
+        const formattedMsg = this.formatTelegramResponse(explicitTgId, result, latencyMs, quota, auth.isOwner);
         await this.sendMessage(chatId, formattedMsg);
       } catch (err) {
         const safeError = (err.message || 'Service unavailable').replace(/https?:\/\/[^\s]+/gi, '[Secure Gateway]');
@@ -820,42 +916,27 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
       return;
     }
 
-    // 4. Check if the message is a 10-digit number
-    if (cleanNumber.length === 10) {
-      await this.sendMessage(chatId, `⏳ *Querying secure gateway for \`${cleanNumber}\`...*`);
+    // ==========================================
+    // ROUTE 3: MOBILE NUMBER LOOKUP (10-Digit Numbers or /phone, /mobile, /num)
+    // ALWAYS queries Mobile Number Info. Never hijacked by Telegram ID lookup!
+    // ==========================================
+    if (cleanNumber.length === 10 || isExplicitPhoneCmd) {
+      if (cleanNumber.length !== 10) {
+        await this.sendMessage(chatId, `⚠️ *Invalid Phone Number:* Please enter a valid 10-digit mobile number.\nExample: \`9876543210\``);
+        return;
+      }
 
-      // Execute query using our shared query engine
+      await this.sendMessage(chatId, `⏳ *Querying secure gateway for \`${cleanNumber}\`...*`);
       const startTime = Date.now();
       try {
-        const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
-        const phoneApi = (activeApi && activeApi.inputType === 'number')
-          ? activeApi
-          : (this.apiStore ? (this.apiStore.getById('phone_lookup') || activeApi) : null);
-
-        let targetUrl = phoneApi ? phoneApi.url : this.activeApiUrl;
-        if ((!targetUrl || targetUrl.includes('/api/mock/')) && this.activeApiUrl && !this.activeApiUrl.includes('/api/mock/')) {
-          targetUrl = this.activeApiUrl;
-        }
-        const paramName = phoneApi ? phoneApi.paramName : this.activeParamName;
-
-        let headers = {};
-        if (phoneApi?.authHeader) {
-          headers['Authorization'] = phoneApi.authHeader;
-        }
-        if (phoneApi?.customHeaders) {
-          try {
-            const parsed = typeof phoneApi.customHeaders === 'object' ? phoneApi.customHeaders : JSON.parse(phoneApi.customHeaders);
-            headers = { ...headers, ...parsed };
-          } catch {}
-        }
-
+        const phoneApi = this.getPhoneApi();
         const result = await this.queryExecutor({
-          url: targetUrl,
-          paramName,
+          url: phoneApi.url,
+          paramName: phoneApi.paramName,
           number: cleanNumber,
           query: cleanNumber,
-          method: phoneApi?.method || 'GET',
-          headers
+          method: phoneApi.method,
+          headers: phoneApi.headers
         });
 
         const latencyMs = result.latencyMs || (Date.now() - startTime);
@@ -868,33 +949,87 @@ Send \`/tg <id>\` (e.g. \`/tg 512345678\`) or numerical user ID
           this.stats.failedQueries = (this.stats.failedQueries || 0) + 1;
         }
 
-        // Decrement quota for non-owners
         const quota = this.authManager.consumeQuota(chatId);
 
-        // Broadcast to web frontend live feed
         this.broadcastEvent('telegram_query', {
           user: fromUser,
           number: cleanNumber,
           type: 'phone',
-          targetUrl: result.targetUrl || targetUrl,
+          targetUrl: result.targetUrl || phoneApi.url,
           result
         });
 
-        // Format Telegram response
         const formattedMsg = this.formatTelegramResponse(cleanNumber, result, latencyMs, quota, auth.isOwner);
         await this.sendMessage(chatId, formattedMsg);
-
       } catch (err) {
         const safeError = (err.message || 'Service unavailable').replace(/https?:\/\/[^\s]+/gi, '[Secure Gateway]');
-        await this.sendMessage(chatId, `❌ *Query Failed*\nError: ${safeError}\nPlease verify the number and try again.`);
+        await this.sendMessage(chatId, `❌ *Phone Query Failed*\nError: ${safeError}\nPlease verify the number and try again.`);
       }
       return;
     }
 
-    // If text is not 10 digits and not a vehicle and not a command
+    // ==========================================
+    // ROUTE 4: NON-10-DIGIT NUMERICAL FALLBACK
+    // If user sent a numerical string that is NOT 10 digits (e.g. 5 to 9 digits, or 11 to 15 digits)
+    // AND the active API on the site is Telegram ID to Number:
+    // ==========================================
+    const activeApi = this.apiStore ? this.apiStore.getActiveApi() : null;
+    if (activeApi && (activeApi.inputType === 'tgid' || activeApi.id === 'tg_id_lookup') && cleanNumber.length >= 5 && cleanNumber.length <= 15) {
+      const ownerId = this.authManager.ownerId || process.env.TELEGRAM_OWNER_ID || '2051992452';
+      if (String(cleanNumber).trim() === String(ownerId).trim()) {
+        await this.sendMessage(
+          chatId,
+          `🔒 *SECURITY ENCRYPTION SHIELD*\n\n⛔ *Access Denied:* The requested Telegram ID (\`${cleanNumber}\`) belongs to the Bot Administrator / Owner and is protected under administrative encryption protocols.\n\nQuery cannot be fulfilled.`
+        );
+        return;
+      }
+
+      await this.sendMessage(chatId, `⏳ *Querying Telegram ID Registry for \`${cleanNumber}\`...*`);
+      const startTime = Date.now();
+      try {
+        const tgApi = this.getTgIdApi();
+        const result = await this.queryExecutor({
+          url: tgApi.url,
+          paramName: tgApi.paramName,
+          query: cleanNumber,
+          method: tgApi.method,
+          headers: tgApi.headers
+        });
+
+        const latencyMs = result.latencyMs || (Date.now() - startTime);
+        this.stats.telegramQueriesCount++;
+        this.stats.tgIdQueries = (this.stats.tgIdQueries || 0) + 1;
+        this.stats.lastQueryAt = new Date().toISOString();
+        if (result.ok) {
+          this.stats.successfulQueries = (this.stats.successfulQueries || 0) + 1;
+        } else {
+          this.stats.failedQueries = (this.stats.failedQueries || 0) + 1;
+        }
+        const quota = this.authManager.consumeQuota(chatId);
+
+        this.broadcastEvent('telegram_query', {
+          user: fromUser,
+          number: cleanNumber,
+          type: 'tgid',
+          targetUrl: result.targetUrl || tgApi.url,
+          result
+        });
+
+        const formattedMsg = this.formatTelegramResponse(cleanNumber, result, latencyMs, quota, auth.isOwner);
+        await this.sendMessage(chatId, formattedMsg);
+      } catch (err) {
+        const safeError = (err.message || 'Service unavailable').replace(/https?:\/\/[^\s]+/gi, '[Secure Gateway]');
+        await this.sendMessage(chatId, `❌ *Telegram ID Query Failed*\nError: ${safeError}\nPlease verify the User ID.`);
+      }
+      return;
+    }
+
+    // ==========================================
+    // UNRECOGNIZED INPUT FORMAT
+    // ==========================================
     await this.sendMessage(
       chatId,
-      `⚠️ *Unrecognized Input Format*\n\n• For *Phone Lookup*, send any *10-digit number* (e.g. \`9876543210\`)\n• For *Vehicle RC Lookup*, send registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)\n• For *Telegram ID Lookup*, send \`/tg <id>\` (e.g. \`/tg 512345678\`)\n• Type \`/apis\` to see all active APIs`
+      `⚠️ *Unrecognized Input Format*\n\n• 📱 *Phone Lookup:* Send any *10-digit number* (e.g. \`9876543210\`)\n• 🚗 *Vehicle RC Lookup:* Send registration number (e.g. \`DL01AB1234\` or \`/vehicle DL01AB1234\`)\n• ✈️ *Telegram ID Lookup:* Send \`/tg <id>\` (e.g. \`/tg 512345678\`)\n• 🗂️ Type \`/apis\` to see all active APIs`
     );
     } catch (err) {
       console.error(`Error handling Telegram message from ${chatId}:`, err);

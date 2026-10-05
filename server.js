@@ -357,9 +357,9 @@ app.put('/api/endpoints/:id', requireAuth, (req, res) => {
     if (!updated) {
       return res.status(404).json({ ok: false, error: 'API not found' });
     }
-    // If updated API is currently active or phone lookup, keep telegram bot synchronized
+    // If updated API is phone lookup or active number API, keep telegram bot synchronized
     const active = apiStore.getActiveApi();
-    if (!telegramBot.isLocked && active && (active.id === req.params.id || req.params.id === 'phone_lookup')) {
+    if (!telegramBot.isLocked && (req.params.id === 'phone_lookup' || (active && active.id === req.params.id && updated.inputType === 'number'))) {
       telegramBot.setConfig(updated.url, updated.paramName);
     }
     res.json({
@@ -393,7 +393,9 @@ app.post('/api/endpoints/:id/activate', requireAuth, (req, res) => {
   }
   const active = apiStore.getActiveApi();
   if (!telegramBot.isLocked && active) {
-    telegramBot.setConfig(active.url, active.paramName);
+    if (active.inputType === 'number') {
+      telegramBot.setConfig(active.url, active.paramName);
+    }
   }
   res.json({
     ok: true,
